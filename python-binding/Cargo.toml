@@ -1,0 +1,13 @@
+[package]
+name = "cflinkrs"
+version = "0.1.0"
+authors = ["Arnaud Taffanel <arnaud@bitcraze.io>"]
+edition = "2018"
+
+[lib]
+name = "cflinkrs"
+crate-type = ["cdylib"]
+
+[dependencies.pyo3]
+version = "0.13"
+features = ["extension-module"]

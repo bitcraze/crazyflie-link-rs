@@ -1,18 +1,6 @@
-[package]
-name = "crazyflie-link"
-version = "0.1.0"
-authors = ["Arnaud Taffanel <arnaud@bitcraze.io>"]
-edition = "2018"
+[workspace]
 
-[dependencies]
-crazyradio = "0.1.5"
-crossbeam-channel = "0.5"
-crossbeam-utils = "0.8"
-log = "0.4"
-rand = "0.8"
-thiserror = "1"
-lazy_static = "1.4"
-regex = "1.4"
-
-[dev-dependencies]
-anyhow = "1"
+members = [
+    "crazyflie-link",
+    "python-binding"
+]
