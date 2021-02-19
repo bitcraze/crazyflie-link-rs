@@ -8,6 +8,9 @@ edition = "2018"
 name = "cflinkrs"
 crate-type = ["cdylib"]
 
+[dependencies]
+crazyflie-link = { path = "../crazyflie-link" }
+
 [dependencies.pyo3]
 version = "0.13"
 features = ["extension-module"]
