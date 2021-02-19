@@ -1,6 +1,6 @@
 
-use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
+use pyo3::{exceptions::PyIOError, prelude::*};
+use std::sync::RwLock;
 
 #[pyclass]
 struct LinkContext {
@@ -27,31 +27,45 @@ impl LinkContext {
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
         let connection = self.context.open_link(uri).unwrap();
 
-        Ok(Connection{connection})
+        Ok(Connection{connection: RwLock::new(Some(connection))})
     }
 }
 
 #[pyclass]
 struct Connection {
-    connection: crazyflie_link::Connection,
+    connection: RwLock<Option<crazyflie_link::Connection>>,
 }
 
 #[pymethods]
 impl Connection {
     fn send_packet(&self, py: Python, packet: Vec<u8>) {
         py.allow_threads(move || {
-            self.connection.send_packet(packet).unwrap();
+            let connection = self.connection.read().unwrap();
+
+            if let Some(connection) = connection.as_ref() {
+                connection.send_packet(packet).unwrap();
+            }
         })
         
     }
 
     fn receive_packet(&self, py: Python) -> PyResult<Vec<u8>> {
         py.allow_threads(move || {
-            Ok(self.connection.recv_packet().unwrap())
+            let connection = self.connection.read().unwrap();
+
+            if let Some(connection) = connection.as_ref() {
+                Ok(connection.recv_packet().unwrap())
+            } else {
+                Err(PyIOError::new_err("Link closed"))
+            }
         })
     }
 
-    // TODO: Implement closing the connection
+    fn close(&self) {
+        if let Some(connection) = self.connection.write().unwrap().take() {
+            connection.disconnect()
+        }
+    }
 }
 
 #[pymodule]
