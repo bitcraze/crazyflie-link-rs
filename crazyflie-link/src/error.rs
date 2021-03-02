@@ -1,4 +1,5 @@
 use std::num::ParseIntError;
+use crossbeam_channel::RecvTimeoutError;
 
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -7,6 +8,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Invalid URI")]
     InvalidUri,
+    #[error("Timeout")]
+    Timeout,
     #[error("Crazyradio error: {0:?}")]
     CrazyradioError(crazyradio::Error),
     #[error("Threading error: {0:?}")]
@@ -36,5 +39,11 @@ impl From<crossbeam_channel::SendError<Vec<u8>>> for Error {
 impl From<ParseIntError> for Error {
     fn from(_error: ParseIntError) -> Self {
         Error::InvalidUri
+    }
+}
+
+impl From<RecvTimeoutError> for Error {
+    fn from(_error: RecvTimeoutError) -> Self {
+        Error::Timeout
     }
 }

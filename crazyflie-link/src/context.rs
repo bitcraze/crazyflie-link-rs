@@ -4,23 +4,35 @@ use crate::Connection;
 use crazyradio::Channel;
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::sync::{Arc, Weak, Mutex};
 
 pub struct LinkContext {
-    radios: Vec<RadioThread>,
+    radios: Vec<Mutex<Weak<RadioThread>>>,
 }
 
 impl LinkContext {
     pub fn new() -> Result<Self> {
-        let radio = crazyradio::Crazyradio::open_first()?;
-        let radio = RadioThread::new(radio);
-
         Ok(Self {
-            radios: vec![radio]
+            radios: vec![Mutex::new(Weak::new())]
         })
     }
 
+    fn get_radio(&self, radio_nth: usize) -> Result<Arc<RadioThread>> {
+        let mut radio = self.radios[radio_nth].lock().unwrap();
+        let radio = match Weak::upgrade(&radio) {
+            Some(radio) => radio,
+            None => {
+                let new_radio = crazyradio::Crazyradio::open_nth(radio_nth)?;
+                let new_radio = Arc::new(RadioThread::new(new_radio));
+                *radio = Arc::downgrade(&new_radio);
+                new_radio
+            }
+        };
+        Ok(radio)
+    }
+
     pub fn scan(&self) -> Result<Vec<String>> {
-        let channels = self.radios.first().unwrap().scan(Channel::from_number(0)?,
+        let channels = self.get_radio(0)?.scan(Channel::from_number(0)?,
                                                                      Channel::from_number(125)?,
                                                                      [0xe7;5],
                                                                      vec![0xff])?;
@@ -49,6 +61,8 @@ impl LinkContext {
             return Err(Error::InvalidUri);
         }
 
-        return Connection::new(self.radios[radio_nth].clone(), channel, [0xe7;5]);
+        let radio = self.get_radio(radio_nth)?;
+
+        return Connection::new(radio, channel, [0xe7;5]);
     }
 }

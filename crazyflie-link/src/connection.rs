@@ -7,6 +7,7 @@ use log::{debug, info, warn};
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time;
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub enum ConnectionStatus {
@@ -24,7 +25,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(radio: RadioThread, channel: Channel, address: [u8; 5]) -> Result<Connection> {
+    pub fn new(radio: Arc<RadioThread>, channel: Channel, address: [u8; 5]) -> Result<Connection> {
         let status = Arc::new(RwLock::new(ConnectionStatus::Connecting));
         let disconnect = Arc::new(ShardedLock::new(false));
 
@@ -78,14 +79,14 @@ impl Connection {
         Ok(())
     }
 
-    pub fn recv_packet(&self) -> Result<Vec<u8>> {
-        let packet = self.downlink.recv()?;
+    pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Vec<u8>> {
+        let packet = self.downlink.recv_timeout(timeout)?;
         Ok(packet)
     }
 }
 
 struct ConnectionThread {
-    radio: RadioThread,
+    radio: Arc<RadioThread>,
     status: Arc<RwLock<ConnectionStatus>>,
     disconnect: Arc<ShardedLock<bool>>,
     safelink_up_ctr: u8,
@@ -98,7 +99,7 @@ struct ConnectionThread {
 
 impl ConnectionThread {
     fn new(
-        radio: RadioThread,
+        radio: Arc<RadioThread>,
         status: Arc<RwLock<ConnectionStatus>>,
         disconnect: Arc<ShardedLock<bool>>,
         uplink: crossbeam_channel::Receiver<Vec<u8>>,

@@ -1,6 +1,6 @@
 
 use pyo3::{exceptions::PyIOError, prelude::*};
-use std::sync::RwLock;
+use std::{sync::RwLock, time::Duration};
 
 #[pyclass]
 struct LinkContext {
@@ -51,12 +51,17 @@ impl Connection {
 
     fn receive_packet(&self, py: Python) -> PyResult<Vec<u8>> {
         py.allow_threads(move || {
-            let connection = self.connection.read().unwrap();
+            loop {
+                let connection = self.connection.read().unwrap();
 
-            if let Some(connection) = connection.as_ref() {
-                Ok(connection.recv_packet().unwrap())
-            } else {
-                Err(PyIOError::new_err("Link closed"))
+                if let Some(connection) = connection.as_ref() {
+                    match connection.recv_packet_timeout(Duration::from_millis(100)) {
+                        Ok(pk) => return Ok(pk),
+                        _ => continue,
+                    }
+                } else {
+                    return Err(PyIOError::new_err("Link closed"))
+                }
             }
         })
     }
