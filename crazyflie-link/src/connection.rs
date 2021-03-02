@@ -9,6 +9,9 @@ use std::sync::RwLock;
 use std::time;
 use std::time::Duration;
 
+const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
+const RELAX_DELAY: Duration = Duration::from_millis(10);
+
 #[derive(Clone, Debug)]
 pub enum ConnectionStatus {
     Connecting,
@@ -188,7 +191,8 @@ impl ConnectionThread {
 
         // Communication loop ...
         let mut last_pk_time = time::Instant::now();
-        let mut relax_timeout = time::Duration::from_millis(10);
+        let mut relax_timeout = RELAX_DELAY;
+        let mut n_empty_packets = 0;
         let mut packet = vec![0xff];
         let mut needs_resend = false;
         while last_pk_time.elapsed() < time::Duration::from_millis(1000) {
@@ -207,15 +211,20 @@ impl ConnectionThread {
                 needs_resend = false;
 
                 // Add some relaxation time if the Crazyflie has nothing to send back
-                // We may want to be a bit more clever there (ie. increasing the time by
-                // small increment instead of this all-or-nothing aproach)
+                // for a while
                 if ack_payload.len() > 0 && (ack_payload[0] & 0xF3) != 0xF3 {
                     ack_payload[0] &= 0xF3;
                     self.downlink.send(ack_payload)?;
-                    relax_timeout = time::Duration::from_millis(0);
+                    relax_timeout = Duration::from_nanos(0);
                 } else {
-                    // If no packet received, relax packet pulling
-                    relax_timeout = time::Duration::from_millis(10);
+                    if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
+                        // If no packet received for a while, relax packet pulling
+                        relax_timeout = RELAX_DELAY;
+                    } else {
+                        relax_timeout = Duration::from_nanos(0);
+                        n_empty_packets += 1;
+                    }
+                    
                 }
             } else {
                 debug!("Lost packet!");
