@@ -1,7 +1,7 @@
 use crazyflie_link::LinkContext;
 
 fn main() -> anyhow::Result<()> {
-    let link_context = LinkContext::new()?;
+    let link_context = LinkContext::new();
 
     let link = link_context.open_link("radio://0/60/2M/E7E7E7E7E7")?;
 

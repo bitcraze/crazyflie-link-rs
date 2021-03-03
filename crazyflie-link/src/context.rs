@@ -11,10 +11,10 @@ pub struct LinkContext {
 }
 
 impl LinkContext {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
+    pub fn new() -> Self {
+        Self {
             radios: vec![Mutex::new(Weak::new())]
-        })
+        }
     }
 
     fn get_radio(&self, radio_nth: usize) -> Result<Arc<RadioThread>> {

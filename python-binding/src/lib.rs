@@ -1,5 +1,5 @@
 
-use pyo3::{exceptions::PyIOError, prelude::*};
+use pyo3::{exceptions::{PyIOError}, prelude::*};
 use std::{sync::RwLock, time::Duration};
 
 #[pyclass]
@@ -11,7 +11,7 @@ struct LinkContext {
 impl LinkContext {
     #[new]
     fn new() -> PyResult<Self> {
-        let context = crazyflie_link::LinkContext::new().unwrap();
+        let context = crazyflie_link::LinkContext::new();
         
         Ok(LinkContext {
             context
@@ -19,13 +19,11 @@ impl LinkContext {
     }
 
     fn scan(&self) -> PyResult<Vec<String>> {
-        let result = self.context.scan().unwrap();
-
-        Ok(result)
+        self.context.scan().map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
     }
 
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
-        let connection = self.context.open_link(uri).unwrap();
+        let connection = self.context.open_link(uri).map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))?;
 
         Ok(Connection{connection: RwLock::new(Some(connection))})
     }
@@ -38,15 +36,16 @@ struct Connection {
 
 #[pymethods]
 impl Connection {
-    fn send_packet(&self, py: Python, packet: Vec<u8>) {
+    fn send_packet(&self, py: Python, packet: Vec<u8>) -> PyResult<()> {
         py.allow_threads(move || {
             let connection = self.connection.read().unwrap();
 
             if let Some(connection) = connection.as_ref() {
-                connection.send_packet(packet).unwrap();
+                connection.send_packet(packet).map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
+            } else {
+                Err(PyErr::new::<PyIOError, _>("Link closed"))
             }
         })
-        
     }
 
     fn receive_packet(&self, py: Python) -> PyResult<Vec<u8>> {
