@@ -2,10 +2,11 @@
 use crate::error::{Error, Result};
 use crate::radio_thread::RadioThread;
 use crazyradio::Channel;
-use crossbeam_utils::sync::{ShardedLock, WaitGroup};
+use crossbeam_utils::sync::WaitGroup;
 use log::{debug, info, warn};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::sync::RwLock;
+use std::thread::JoinHandle;
 use std::time;
 use std::time::Duration;
 
@@ -21,16 +22,17 @@ pub enum ConnectionStatus {
 
 pub struct Connection {
     status: Arc<RwLock<ConnectionStatus>>,
-    disconnect: Arc<ShardedLock<bool>>,
-    thread: std::thread::JoinHandle<()>,
     uplink: crossbeam_channel::Sender<Vec<u8>>,
     downlink: crossbeam_channel::Receiver<Vec<u8>>,
+    disconnect_canary: Arc<()>,
+    thread_handle: JoinHandle<()>,
 }
 
 impl Connection {
     pub fn new(radio: Arc<RadioThread>, channel: Channel, address: [u8; 5]) -> Result<Connection> {
         let status = Arc::new(RwLock::new(ConnectionStatus::Connecting));
-        let disconnect = Arc::new(ShardedLock::new(false));
+
+        let disconnect_canary = Arc::new(());
 
         let (uplink_send, uplink_recv) = crossbeam_channel::unbounded();
         let (downlink_send, downlink_recv) = crossbeam_channel::unbounded();
@@ -41,13 +43,13 @@ impl Connection {
         let mut thread = ConnectionThread::new(
             radio,
             status.clone(),
-            disconnect.clone(),
+            Arc::downgrade(&disconnect_canary),
             uplink_recv,
             downlink_send,
             channel,
             address,
         );
-        let thread = std::thread::spawn(move || match thread.run(ci) {
+        let thread_handle = std::thread::spawn(move || match thread.run(ci) {
             Err(e) => thread.update_status(ConnectionStatus::Disconnected(format!(
                 "Connection error: {}",
                 e
@@ -60,21 +62,20 @@ impl Connection {
 
         Ok(Connection {
             status,
-            disconnect,
-            thread,
+            disconnect_canary,
             uplink: uplink_send,
             downlink: downlink_recv,
+            thread_handle,
         })
+    }
+
+    pub fn close(self) {
+        drop(self.disconnect_canary);
+        self.thread_handle.join().unwrap();
     }
 
     pub fn status(&self) -> ConnectionStatus {
         self.status.read().unwrap().clone()
-    }
-
-    pub fn disconnect(self) {
-        *self.disconnect.write().unwrap() = true;
-        debug!("Closing the connection!");
-        self.thread.join().unwrap();
     }
 
     pub fn send_packet(&self, packet: Vec<u8>) -> Result<()> {
@@ -91,7 +92,7 @@ impl Connection {
 struct ConnectionThread {
     radio: Arc<RadioThread>,
     status: Arc<RwLock<ConnectionStatus>>,
-    disconnect: Arc<ShardedLock<bool>>,
+    disconnect_canary: Weak<()>,
     safelink_up_ctr: u8,
     safelink_down_ctr: u8,
     uplink: crossbeam_channel::Receiver<Vec<u8>>,
@@ -104,7 +105,7 @@ impl ConnectionThread {
     fn new(
         radio: Arc<RadioThread>,
         status: Arc<RwLock<ConnectionStatus>>,
-        disconnect: Arc<ShardedLock<bool>>,
+        disconnect_canary: Weak<()>,
         uplink: crossbeam_channel::Receiver<Vec<u8>>,
         downlink: crossbeam_channel::Sender<Vec<u8>>,
         channel: Channel,
@@ -113,7 +114,7 @@ impl ConnectionThread {
         ConnectionThread {
             radio,
             status,
-            disconnect,
+            disconnect_canary,
             safelink_up_ctr: 0,
             safelink_down_ctr: 0,
             uplink,
@@ -231,14 +232,8 @@ impl ConnectionThread {
                 needs_resend = true;
             }
 
-            if *self.disconnect.read().unwrap() {
-                self.update_status(ConnectionStatus::Disconnected(
-                    "Disconnect requested".to_string(),
-                ));
-                info!(
-                    "Closing connection to {:?}/{:X?} as requested",
-                    self.channel, self.address
-                );
+            // If the connection object has been dropped, leave the thread
+            if let None = Weak::upgrade(&self.disconnect_canary) {
                 return Ok(());
             }
         }

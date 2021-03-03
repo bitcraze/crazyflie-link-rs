@@ -68,7 +68,7 @@ impl Connection {
 
     fn close(&self) {
         if let Some(connection) = self.connection.write().unwrap().take() {
-            connection.disconnect()
+            connection.close()
         }
     }
 }
