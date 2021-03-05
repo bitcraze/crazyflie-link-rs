@@ -1,5 +1,5 @@
-use crazyflie_link::LinkContext;
 use anyhow::Result;
+use crazyflie_link::LinkContext;
 
 fn main() -> Result<()> {
     let context = crate::LinkContext::new();
@@ -10,6 +10,6 @@ fn main() -> Result<()> {
     for uri in found {
         println!(" - {}", uri)
     }
-    
+
     Ok(())
 }

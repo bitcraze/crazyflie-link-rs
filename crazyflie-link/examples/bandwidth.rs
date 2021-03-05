@@ -1,6 +1,6 @@
 // Simple bandwidth test
 use crazyflie_link::LinkContext;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
@@ -23,12 +23,10 @@ fn bench<F: FnOnce() -> anyhow::Result<()>>(function: F) -> anyhow::Result<Durat
 }
 
 fn main() -> anyhow::Result<()> {
-
     let opt = Opt::from_args();
 
     let link_context = LinkContext::new();
     let link = link_context.open_link(&opt.link_uri)?;
-
 
     // Purge crazyflie queues
     loop {
@@ -37,17 +35,16 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-
-    let runtime = bench( || {
+    let runtime = bench(|| {
         for i in (0..opt.n_packets).into_iter() {
-            let mut packet = vec![0;opt.size_packet];
+            let mut packet = vec![0; opt.size_packet];
             packet[0] = 0xf0; // Echo port
             packet[1] = i as u8;
             link.send_packet(packet)?;
         }
         for i in (0..opt.n_packets).into_iter() {
             let mut packet;
-            
+
             loop {
                 packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?;
                 // println!("{:?}", packet);
@@ -55,23 +52,29 @@ fn main() -> anyhow::Result<()> {
                     break;
                 }
             }
-    
+
             if packet[1] != (i as u8) {
-                println!("Communication error! Expected {}, received {}.", i as u8, packet[1]);
+                println!(
+                    "Communication error! Expected {}, received {}.",
+                    i as u8, packet[1]
+                );
                 panic!();
             }
         }
 
         Ok(())
-    })?.as_secs_f64();
-    
+    })?
+    .as_secs_f64();
 
-
-    let packet_rate = (opt.n_packets as f64)/runtime;
+    let packet_rate = (opt.n_packets as f64) / runtime;
     let bandwidth = packet_rate * (opt.size_packet as f64);
 
-
-    println!("Runtime: {}, packet rate: {} pk/s, bandwidth: {} kB/s", runtime, packet_rate, bandwidth / 1024.);
+    println!(
+        "Runtime: {}, packet rate: {} pk/s, bandwidth: {} kB/s",
+        runtime,
+        packet_rate,
+        bandwidth / 1024.
+    );
 
     Ok(())
 }

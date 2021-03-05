@@ -4,14 +4,14 @@ use crate::radio_thread::RadioThread;
 use crazyradio::Channel;
 use crossbeam_utils::sync::WaitGroup;
 use log::{debug, info, warn};
-use std::sync::{Arc, Weak};
 use std::sync::RwLock;
+use std::sync::{Arc, Weak};
 use std::thread::JoinHandle;
 use std::time;
 use std::time::Duration;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
-const RELAX_DELAY: Duration = Duration::from_millis(10);
+const RELAX_DELAY: Duration = Duration::from_millis(0);
 
 #[derive(Clone, Debug)]
 pub enum ConnectionStatus {
@@ -200,8 +200,10 @@ impl ConnectionThread {
             if !needs_resend {
                 packet = match self.uplink.recv_timeout(relax_timeout) {
                     Ok(pk) => pk,
-                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => vec![0xff],  // Null packet
-                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Err(Error::CrossbeamRecvError(crossbeam_channel::RecvError))
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => vec![0xff], // Null packet
+                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                        return Err(Error::CrossbeamRecvError(crossbeam_channel::RecvError))
+                    }
                 }
             }
 
@@ -225,7 +227,6 @@ impl ConnectionThread {
                         relax_timeout = Duration::from_nanos(0);
                         n_empty_packets += 1;
                     }
-                    
                 }
             } else {
                 debug!("Lost packet!");

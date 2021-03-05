@@ -1,8 +1,8 @@
-mod radio_thread;
 mod connection;
-mod error;
 mod context;
+mod error;
+mod radio_thread;
 
 pub use connection::{Connection, ConnectionStatus};
-pub use radio_thread::RadioThread;
 pub use context::LinkContext;
+pub use radio_thread::RadioThread;

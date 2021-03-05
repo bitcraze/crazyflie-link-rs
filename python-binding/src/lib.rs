@@ -1,5 +1,4 @@
-
-use pyo3::{exceptions::{PyIOError}, prelude::*};
+use pyo3::{exceptions::PyIOError, prelude::*};
 use std::{sync::RwLock, time::Duration};
 
 #[pyclass]
@@ -12,20 +11,25 @@ impl LinkContext {
     #[new]
     fn new() -> PyResult<Self> {
         let context = crazyflie_link::LinkContext::new();
-        
-        Ok(LinkContext {
-            context
-        })
+
+        Ok(LinkContext { context })
     }
 
     fn scan(&self) -> PyResult<Vec<String>> {
-        self.context.scan().map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+        self.context
+            .scan()
+            .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
     }
 
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
-        let connection = self.context.open_link(uri).map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))?;
+        let connection = self
+            .context
+            .open_link(uri)
+            .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))?;
 
-        Ok(Connection{connection: RwLock::new(Some(connection))})
+        Ok(Connection {
+            connection: RwLock::new(Some(connection)),
+        })
     }
 }
 
@@ -41,7 +45,9 @@ impl Connection {
             let connection = self.connection.read().unwrap();
 
             if let Some(connection) = connection.as_ref() {
-                connection.send_packet(packet).map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
+                connection
+                    .send_packet(packet)
+                    .map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
             } else {
                 Err(PyErr::new::<PyIOError, _>("Link closed"))
             }
@@ -49,18 +55,16 @@ impl Connection {
     }
 
     fn receive_packet(&self, py: Python) -> PyResult<Vec<u8>> {
-        py.allow_threads(move || {
-            loop {
-                let connection = self.connection.read().unwrap();
+        py.allow_threads(move || loop {
+            let connection = self.connection.read().unwrap();
 
-                if let Some(connection) = connection.as_ref() {
-                    match connection.recv_packet_timeout(Duration::from_millis(100)) {
-                        Ok(pk) => return Ok(pk),
-                        _ => continue,
-                    }
-                } else {
-                    return Err(PyIOError::new_err("Link closed"))
+            if let Some(connection) = connection.as_ref() {
+                match connection.recv_packet_timeout(Duration::from_millis(100)) {
+                    Ok(pk) => return Ok(pk),
+                    _ => continue,
                 }
+            } else {
+                return Err(PyIOError::new_err("Link closed"));
             }
         })
     }

@@ -1,6 +1,5 @@
-use std::num::ParseIntError;
 use crossbeam_channel::RecvTimeoutError;
-
+use std::num::ParseIntError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
