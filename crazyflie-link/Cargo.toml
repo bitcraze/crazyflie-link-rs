@@ -16,3 +16,4 @@ regex = "1.4"
 
 [dev-dependencies]
 anyhow = "1"
+structopt = "0.3"
