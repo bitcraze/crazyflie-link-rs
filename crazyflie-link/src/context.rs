@@ -2,9 +2,8 @@ use crate::error::{Error, Result};
 use crate::Connection;
 use crate::RadioThread;
 use crazyradio::Channel;
-use lazy_static::lazy_static;
-use regex::Regex;
 use std::sync::{Arc, Mutex, Weak};
+use url::Url;
 
 pub struct LinkContext {
     radios: Vec<Mutex<Weak<RadioThread>>>,
@@ -50,15 +49,29 @@ impl LinkContext {
     }
 
     pub fn open_link(&self, uri: &str) -> Result<Connection> {
-        lazy_static! {
-            static ref URI_REGEX: Regex =
-                Regex::new(r"^radio://(\d+)/(\d+)/2M/([0-9a-hA-H]{10})$").unwrap();
+        let uri = Url::parse(uri)?;
+
+        if uri.scheme() != "radio" {
+            return Err(Error::InvalidUri);
         }
 
-        let matches: regex::Captures = URI_REGEX.captures(uri).ok_or(Error::InvalidUri)?;
+        let radio_nth: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;
 
-        let radio_nth: usize = matches[1].parse()?;
-        let channel = Channel::from_number(matches[2].parse()?)?;
+        let path: Vec<&str> = uri.path_segments().ok_or(Error::InvalidUri)?.collect();
+        if path.len() != 3 {
+            return Err(Error::InvalidUri);
+        }
+        let channel = Channel::from_number(path[0].parse()?)?;
+        let _datarate = path[1];
+        let address_str = path[2];
+
+        if address_str.len() != 10 {
+            return Err(Error::InvalidUri);
+        }
+        let mut address = [0u8; 5];
+        for i in 0..5 {
+            address[i] = u8::from_str_radix(&address_str[2*i..(2*i+2)], 16)?;
+        }
 
         if radio_nth >= self.radios.len() {
             return Err(Error::InvalidUri);
@@ -66,6 +79,6 @@ impl LinkContext {
 
         let radio = self.get_radio(radio_nth)?;
 
-        return Connection::new(radio, channel, [0xe7; 5]);
+        return Connection::new(radio, channel, address);
     }
 }

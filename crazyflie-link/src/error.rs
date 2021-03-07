@@ -35,6 +35,12 @@ impl From<crossbeam_channel::SendError<Vec<u8>>> for Error {
     }
 }
 
+impl From<url::ParseError> for Error {
+    fn from(_error: url::ParseError) -> Self {
+        Error::InvalidUri
+    }
+}
+
 impl From<ParseIntError> for Error {
     fn from(_error: ParseIntError) -> Self {
         Error::InvalidUri
