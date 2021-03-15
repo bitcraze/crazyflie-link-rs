@@ -70,7 +70,7 @@ impl LinkContext {
         }
         let mut address = [0u8; 5];
         for i in 0..5 {
-            address[i] = u8::from_str_radix(&address_str[2*i..(2*i+2)], 16)?;
+            address[i] = u8::from_str_radix(&address_str[2 * i..(2 * i + 2)], 16)?;
         }
 
         if radio_nth >= self.radios.len() {

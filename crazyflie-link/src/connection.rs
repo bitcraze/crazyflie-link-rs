@@ -1,6 +1,7 @@
 // Connection handling code
 use crate::error::{Error, Result};
 use crate::radio_thread::RadioThread;
+use crate::Packet;
 use crazyradio::Channel;
 use crossbeam_utils::sync::WaitGroup;
 use log::{debug, info, warn};
@@ -78,13 +79,13 @@ impl Connection {
         self.status.read().unwrap().clone()
     }
 
-    pub fn send_packet(&self, packet: Vec<u8>) -> Result<()> {
-        self.uplink.send(packet)?;
+    pub fn send_packet(&self, packet: Packet) -> Result<()> {
+        self.uplink.send(packet.to_vec())?;
         Ok(())
     }
 
-    pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Vec<u8>> {
-        let packet = self.downlink.recv_timeout(timeout)?;
+    pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Packet> {
+        let packet = Packet::from(self.downlink.recv_timeout(timeout)?);
         Ok(packet)
     }
 }
