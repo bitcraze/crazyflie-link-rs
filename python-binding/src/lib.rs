@@ -60,7 +60,7 @@ impl Connection {
 
             if let Some(connection) = connection.as_ref() {
                 match connection.recv_packet_timeout(Duration::from_millis(100)) {
-                    Ok(pk) => return Ok(pk.to_vec()),
+                    Ok(pk) => return Ok(pk.into()),
                     _ => continue,
                 }
             } else {

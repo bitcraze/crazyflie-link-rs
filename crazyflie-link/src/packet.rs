@@ -41,6 +41,16 @@ impl From<Vec<u8>> for Packet {
     }
 }
 
+impl From<Packet> for Vec<u8> {
+    fn from(packet: Packet) -> Self {
+        let mut vec = Vec::new();
+
+        vec.push(packet.get_header());
+        vec.append(&mut packet.get_data().to_vec());
+        vec
+    }
+}
+
 impl Packet {
     pub fn new(port: u8, channel: u8, data: Vec<u8>) -> Self {
         Packet {
@@ -88,14 +98,5 @@ impl Packet {
 
         // port is at bit 5 to 8
         header | (self.port << 4) & 0xF0 // header => pppp11cc
-    }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        let mut vec = Vec::new();
-
-        vec.push(self.get_header());
-        vec.append(&mut self.data.to_vec());
-
-        vec
     }
 }

@@ -80,7 +80,7 @@ impl Connection {
     }
 
     pub fn send_packet(&self, packet: Packet) -> Result<()> {
-        self.uplink.send(packet.to_vec())?;
+        self.uplink.send(packet.into())?;
         Ok(())
     }
 
