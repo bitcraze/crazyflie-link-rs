@@ -22,12 +22,12 @@ impl From<Vec<u8>> for Packet {
         //
         // A packet on the wire starts with a header byte, formatted as:
         //
-        //   pppp11cc
+        //   pppp00cc
         //
         // Where ...
         //  ... bit 1 and 2 is the channel (c) ...
-        //  ... bit 3 and 4 is legacy and set to 1 ...
-        //  ... bit 5, 6, 7 and 8 is the port.
+        //  ... bit 3 and 4 are reserved for flow-control for the radio link ...
+        //  ... bit 5, 6, 7 and 8 is the port (p).
         //
         let channel = header & 0x03; // mask out the channel
         let port = (header & 0xF0) >> 4; // twiddle out the port
@@ -89,14 +89,12 @@ impl Packet {
         // See the From trait implementation above for more details of the
         // vector format.
         //
-
-        // bit 3 and 4 is reserved for legacy reasons
-        let mut header = 0x3 << 2; // header => 00001100
+        let mut header = 0;
 
         // channel is at bit 1 to 2
-        header |= self.channel & 0x03; // header => 000011cc
+        header |= self.channel & 0x03; // header => 000000cc
 
         // port is at bit 5 to 8
-        header | (self.port << 4) & 0xF0 // header => pppp11cc
+        header | (self.port << 4) & 0xF0 // header => pppp00cc
     }
 }
