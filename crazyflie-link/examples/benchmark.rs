@@ -44,8 +44,7 @@ fn main() -> anyhow::Result<()> {
     purge_crazyflie_queues(&link);
     let mut ping_times = Vec::new();
     for i in 0..opt.n_packets {
-        let mut packet = Packet::new_from_header(0xf0);
-        packet.append_data(&mut vec![i as u8]);
+        let mut packet = Packet::new(0xF, 0, vec![i as u8]);
         let ping_time = bench(|| {
             let data;
 
@@ -89,8 +88,7 @@ fn main() -> anyhow::Result<()> {
 
     let runtime = bench(|| {
         for i in (0..opt.n_packets).into_iter() {
-            let mut packet = Packet::new_from_header(0xf0);
-            packet.append_data(&mut vec![i as u8]);
+            let packet = Packet::new(0xF, 0, vec![i as u8]);
             link.send_packet(packet)?;
         }
         for i in (0..opt.n_packets).into_iter() {
