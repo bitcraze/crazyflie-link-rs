@@ -2,6 +2,7 @@ use crate::error::{Error, Result};
 use crate::Connection;
 use crate::RadioThread;
 use crazyradio::Channel;
+use hex;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
@@ -30,11 +31,11 @@ impl LinkContext {
         Ok(radio)
     }
 
-    pub fn scan(&self) -> Result<Vec<String>> {
+    pub fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
         let channels = self.get_radio(0)?.scan(
             Channel::from_number(0)?,
             Channel::from_number(125)?,
-            [0xe7; 5],
+            address,
             vec![0xff],
         )?;
 
@@ -42,7 +43,8 @@ impl LinkContext {
 
         for channel in channels {
             let channel: u8 = channel.into();
-            found.push(format!("radio://0/{}/2M/E7E7E7E7E7", channel));
+            let address = hex::encode(address.to_vec()).to_uppercase();
+            found.push(format!("radio://0/{}/2M/{}", channel, address));
         }
 
         Ok(found)
