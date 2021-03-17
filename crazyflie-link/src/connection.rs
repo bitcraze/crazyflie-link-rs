@@ -156,7 +156,7 @@ impl ConnectionThread {
 
         let (ack, ack_payload) = self.radio.send_packet(self.channel, self.address, packet)?;
 
-        if ack.received && ack_payload.len() > 0 {
+        if ack.received && !ack_payload.is_empty() {
             let received_down_ctr = (ack_payload[0] & 0x04) >> 2;
             if received_down_ctr == self.safelink_down_ctr {
                 self.safelink_down_ctr = 1 - self.safelink_down_ctr;
@@ -216,7 +216,7 @@ impl ConnectionThread {
 
                 // Add some relaxation time if the Crazyflie has nothing to send back
                 // for a while
-                if ack_payload.len() > 0 && (ack_payload[0] & 0xF3) != 0xF3 {
+                if !ack_payload.is_empty() && (ack_payload[0] & 0xF3) != 0xF3 {
                     ack_payload[0] &= 0xF3;
                     self.downlink.send(ack_payload)?;
                     relax_timeout = Duration::from_nanos(0);
