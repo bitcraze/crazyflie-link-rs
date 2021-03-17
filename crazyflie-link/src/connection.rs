@@ -50,12 +50,13 @@ impl Connection {
             channel,
             address,
         );
-        let thread_handle = std::thread::spawn(move || match thread.run(ci) {
-            Err(e) => thread.update_status(ConnectionStatus::Disconnected(format!(
-                "Connection error: {}",
-                e
-            ))),
-            _ => {}
+        let thread_handle = std::thread::spawn(move || {
+            if let Err(e) = thread.run(ci) {
+                thread.update_status(ConnectionStatus::Disconnected(format!(
+                    "Connection error: {}",
+                    e
+                )))
+            }
         });
 
         // Wait for, either, the connection being established or failed initialization
