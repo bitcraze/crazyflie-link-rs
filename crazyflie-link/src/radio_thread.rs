@@ -70,10 +70,10 @@ impl RadioThread {
         self.radio_command
             .send(RadioCommand::Scan {
                 client: self.scan_res_send.clone(),
-                start: start,
-                stop: stop,
-                address: address,
-                payload: payload,
+                start,
+                stop,
+                address,
+                payload,
             })
             .unwrap();
 
@@ -91,9 +91,9 @@ impl RadioThread {
         self.radio_command
             .send(RadioCommand::SendPacket {
                 client: self.send_packet_res_send.clone(),
-                channel: channel,
-                address: address,
-                payload: payload,
+                channel,
+                address,
+                payload,
             })
             .unwrap();
 
