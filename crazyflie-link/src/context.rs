@@ -2,7 +2,6 @@ use crate::error::{Error, Result};
 use crate::Connection;
 use crate::RadioThread;
 use crazyradio::Channel;
-use hex;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
