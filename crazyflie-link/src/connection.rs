@@ -233,7 +233,7 @@ impl ConnectionThread {
             }
 
             // If the connection object has been dropped, leave the thread
-            if let None = Weak::upgrade(&self.disconnect_canary) {
+            if Weak::upgrade(&self.disconnect_canary).is_none() {
                 return Ok(());
             }
         }
