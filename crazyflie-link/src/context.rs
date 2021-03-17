@@ -81,6 +81,6 @@ impl LinkContext {
 
         let radio = self.get_radio(radio_nth)?;
 
-        return Connection::new(radio, channel, address);
+        Connection::new(radio, channel, address)
     }
 }

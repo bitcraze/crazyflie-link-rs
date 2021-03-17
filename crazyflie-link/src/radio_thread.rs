@@ -164,7 +164,7 @@ fn scan(
     crazyradio.set_address(&address)?;
     let found = crazyradio.scan_channels(start, stop, &payload)?;
 
-    return Ok(ScanResult { found });
+    Ok(ScanResult { found })
 }
 
 fn send_packet(
