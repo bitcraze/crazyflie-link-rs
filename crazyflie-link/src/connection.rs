@@ -220,14 +220,12 @@ impl ConnectionThread {
                     ack_payload[0] &= 0xF3;
                     self.downlink.send(ack_payload)?;
                     relax_timeout = Duration::from_nanos(0);
+                } else if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
+                    // If no packet received for a while, relax packet pulling
+                    relax_timeout = RELAX_DELAY;
                 } else {
-                    if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
-                        // If no packet received for a while, relax packet pulling
-                        relax_timeout = RELAX_DELAY;
-                    } else {
-                        relax_timeout = Duration::from_nanos(0);
-                        n_empty_packets += 1;
-                    }
+                    relax_timeout = Duration::from_nanos(0);
+                    n_empty_packets += 1;
                 }
             } else {
                 debug!("Lost packet!");
