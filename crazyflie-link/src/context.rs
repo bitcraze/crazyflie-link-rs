@@ -10,6 +10,12 @@ pub struct LinkContext {
     radios: Vec<Mutex<Weak<RadioThread>>>,
 }
 
+impl Default for LinkContext {
+    fn default() -> Self {
+        LinkContext::new()
+    }
+}
+
 impl LinkContext {
     pub fn new() -> Self {
         Self {
