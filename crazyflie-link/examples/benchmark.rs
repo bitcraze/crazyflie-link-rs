@@ -1,5 +1,5 @@
 // Simple benchmark test, test ping time and duplex bandwidth
-use crazyflie_link::LinkContext;
+use crazyflie_link::{LinkContext, Packet};
 use std::{
     ops::Div,
     time::{Duration, Instant},
@@ -44,22 +44,23 @@ fn main() -> anyhow::Result<()> {
     purge_crazyflie_queues(&link);
     let mut ping_times = Vec::new();
     for i in 0..opt.n_packets {
-        let mut packet = vec![0; opt.size_packet];
-        packet[0] = 0xf0;
-        packet[1] = i as u8;
+        let mut packet = Packet::new(0xF, 0, vec![i as u8]);
         let ping_time = bench(|| {
+            let data;
+
             link.send_packet(packet)?;
             loop {
                 packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?;
-                if packet[0] == 0xf0 {
+                if packet.get_header() == 0xf0 {
                     break;
                 }
             }
 
-            if packet[1] != (i as u8) {
+            data = packet.get_data();
+            if data[0] != (i as u8) {
                 println!(
                     "Communication error! Expected {}, received {}.",
-                    i as u8, packet[1]
+                    i as u8, data[0]
                 );
                 panic!();
             }
@@ -87,9 +88,7 @@ fn main() -> anyhow::Result<()> {
 
     let runtime = bench(|| {
         for i in (0..opt.n_packets).into_iter() {
-            let mut packet = vec![0; opt.size_packet];
-            packet[0] = 0xf0; // Echo port
-            packet[1] = i as u8;
+            let packet = Packet::new(0xF, 0, vec![i as u8]);
             link.send_packet(packet)?;
         }
         for i in (0..opt.n_packets).into_iter() {
@@ -97,15 +96,16 @@ fn main() -> anyhow::Result<()> {
 
             loop {
                 packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?;
-                if packet[0] == 0xf0 {
+                if packet.get_header() == 0xf0 {
                     break;
                 }
             }
 
-            if packet[1] != (i as u8) {
+            let data = packet.get_data();
+            if data[0] != (i as u8) {
                 println!(
                     "Communication error! Expected {}, received {}.",
-                    i as u8, packet[1]
+                    i as u8, data[0]
                 );
                 panic!();
             }

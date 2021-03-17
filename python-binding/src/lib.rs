@@ -46,7 +46,7 @@ impl Connection {
 
             if let Some(connection) = connection.as_ref() {
                 connection
-                    .send_packet(packet)
+                    .send_packet(crazyflie_link::Packet::from(packet))
                     .map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
             } else {
                 Err(PyErr::new::<PyIOError, _>("Link closed"))
@@ -60,7 +60,7 @@ impl Connection {
 
             if let Some(connection) = connection.as_ref() {
                 match connection.recv_packet_timeout(Duration::from_millis(100)) {
-                    Ok(pk) => return Ok(pk),
+                    Ok(pk) => return Ok(pk.into()),
                     _ => continue,
                 }
             } else {
