@@ -176,7 +176,7 @@ impl ConnectionThread {
         // Try to initialize safelink
         // This server only supports safelink, if it cannot be enabled
         // the Crazyflie is deemed not connectable
-        if self.enable_safelink()? == false {
+        if !self.enable_safelink()? {
             self.update_status(ConnectionStatus::Disconnected(
                 "Cannot initialize connection".to_string(),
             ));
