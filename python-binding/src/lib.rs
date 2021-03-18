@@ -9,10 +9,10 @@ struct LinkContext {
 #[pymethods]
 impl LinkContext {
     #[new]
-    fn new() -> PyResult<Self> {
+    fn new() -> Self {
         let context = crazyflie_link::LinkContext::new();
 
-        Ok(LinkContext { context })
+        LinkContext { context }
     }
 
     fn scan(&self, address: [u8; 5]) -> PyResult<Vec<String>> {

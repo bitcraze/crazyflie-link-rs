@@ -2,12 +2,17 @@ use crate::error::{Error, Result};
 use crate::Connection;
 use crate::RadioThread;
 use crazyradio::Channel;
-use hex;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
 pub struct LinkContext {
     radios: Vec<Mutex<Weak<RadioThread>>>,
+}
+
+impl Default for LinkContext {
+    fn default() -> Self {
+        LinkContext::new()
+    }
 }
 
 impl LinkContext {
@@ -81,6 +86,6 @@ impl LinkContext {
 
         let radio = self.get_radio(radio_nth)?;
 
-        return Connection::new(radio, channel, address);
+        Connection::new(radio, channel, address)
     }
 }

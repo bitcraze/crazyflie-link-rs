@@ -50,12 +50,13 @@ impl Connection {
             channel,
             address,
         );
-        let thread_handle = std::thread::spawn(move || match thread.run(ci) {
-            Err(e) => thread.update_status(ConnectionStatus::Disconnected(format!(
-                "Connection error: {}",
-                e
-            ))),
-            _ => {}
+        let thread_handle = std::thread::spawn(move || {
+            if let Err(e) = thread.run(ci) {
+                thread.update_status(ConnectionStatus::Disconnected(format!(
+                    "Connection error: {}",
+                    e
+                )))
+            }
         });
 
         // Wait for, either, the connection being established or failed initialization
@@ -156,7 +157,7 @@ impl ConnectionThread {
 
         let (ack, ack_payload) = self.radio.send_packet(self.channel, self.address, packet)?;
 
-        if ack.received && ack_payload.len() > 0 {
+        if ack.received && !ack_payload.is_empty() {
             let received_down_ctr = (ack_payload[0] & 0x04) >> 2;
             if received_down_ctr == self.safelink_down_ctr {
                 self.safelink_down_ctr = 1 - self.safelink_down_ctr;
@@ -176,7 +177,7 @@ impl ConnectionThread {
         // Try to initialize safelink
         // This server only supports safelink, if it cannot be enabled
         // the Crazyflie is deemed not connectable
-        if self.enable_safelink()? == false {
+        if !self.enable_safelink()? {
             self.update_status(ConnectionStatus::Disconnected(
                 "Cannot initialize connection".to_string(),
             ));
@@ -216,18 +217,16 @@ impl ConnectionThread {
 
                 // Add some relaxation time if the Crazyflie has nothing to send back
                 // for a while
-                if ack_payload.len() > 0 && (ack_payload[0] & 0xF3) != 0xF3 {
+                if !ack_payload.is_empty() && (ack_payload[0] & 0xF3) != 0xF3 {
                     ack_payload[0] &= 0xF3;
                     self.downlink.send(ack_payload)?;
                     relax_timeout = Duration::from_nanos(0);
+                } else if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
+                    // If no packet received for a while, relax packet pulling
+                    relax_timeout = RELAX_DELAY;
                 } else {
-                    if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
-                        // If no packet received for a while, relax packet pulling
-                        relax_timeout = RELAX_DELAY;
-                    } else {
-                        relax_timeout = Duration::from_nanos(0);
-                        n_empty_packets += 1;
-                    }
+                    relax_timeout = Duration::from_nanos(0);
+                    n_empty_packets += 1;
                 }
             } else {
                 debug!("Lost packet!");
@@ -235,7 +234,7 @@ impl ConnectionThread {
             }
 
             // If the connection object has been dropped, leave the thread
-            if let None = Weak::upgrade(&self.disconnect_canary) {
+            if Weak::upgrade(&self.disconnect_canary).is_none() {
                 return Ok(());
             }
         }
