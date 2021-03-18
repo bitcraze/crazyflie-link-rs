@@ -9,10 +9,10 @@ struct LinkContext {
 #[pymethods]
 impl LinkContext {
     #[new]
-    fn new() -> PyResult<Self> {
+    fn new() -> Self {
         let context = crazyflie_link::LinkContext::new();
 
-        Ok(LinkContext { context })
+        LinkContext { context }
     }
 
     #[args(address="[0xe7; 5]")]
