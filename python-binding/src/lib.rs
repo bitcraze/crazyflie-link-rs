@@ -15,7 +15,7 @@ impl LinkContext {
         LinkContext { context }
     }
 
-    #[args(address="[0xe7; 5]")]
+    #[args(address = "[0xe7; 5]")]
     fn scan(&self, address: [u8; 5]) -> PyResult<Vec<String>> {
         self.context
             .scan(address)
@@ -61,12 +61,13 @@ impl Connection {
         })
     }
 
-    fn receive_packet(&self, py: Python) -> PyResult<Vec<u8>> {
+    #[args(timeout = "100")]
+    fn receive_packet(&self, py: Python, timeout: u64) -> PyResult<Vec<u8>> {
         py.allow_threads(move || loop {
             let connection = self.connection.read().unwrap();
 
             if let Some(connection) = connection.as_ref() {
-                match connection.recv_packet_timeout(Duration::from_millis(100)) {
+                match connection.recv_packet_timeout(Duration::from_millis(timeout)) {
                     Ok(pk) => return Ok(pk.into()),
                     _ => continue,
                 }
