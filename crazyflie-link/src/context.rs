@@ -3,6 +3,7 @@ use crate::Connection;
 use crate::RadioThread;
 use crazyradio::Channel;
 use std::collections::BTreeMap;
+use hex::FromHex;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
@@ -41,6 +42,35 @@ impl LinkContext {
         Ok(radio)
     }
 
+    fn parse_uri(&self, uri: &str) -> Result<(usize, Channel, [u8; 5])> {
+        let uri = Url::parse(uri)?;
+
+        if uri.scheme() != "radio" {
+            return Err(Error::InvalidUri);
+        }
+
+        let radio: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;
+
+        let path: Vec<&str> = uri.path_segments().ok_or(Error::InvalidUri)?.collect();
+        if path.len() != 3 {
+            return Err(Error::InvalidUri);
+        }
+        let channel = Channel::from_number(path[0].parse()?)?;
+        let _rate = path[1];
+        let addr_str = path[2];
+
+        if addr_str.len() > 10 {
+            return Err(Error::InvalidUri);
+        }
+
+        let address = match <[u8; 5]>::from_hex(format!("{:0>10}", addr_str)) {
+            Ok(address) => address,
+            Err(_) => return Err(Error::InvalidUri),
+        };
+
+        Ok((radio, channel, address))
+    }
+
     pub fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
         let channels = self.get_radio(0)?.scan(
             Channel::from_number(0)?,
@@ -61,29 +91,7 @@ impl LinkContext {
     }
 
     pub fn open_link(&self, uri: &str) -> Result<Connection> {
-        let uri = Url::parse(uri)?;
-
-        if uri.scheme() != "radio" {
-            return Err(Error::InvalidUri);
-        }
-
-        let radio_nth: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;
-
-        let path: Vec<&str> = uri.path_segments().ok_or(Error::InvalidUri)?.collect();
-        if path.len() != 3 {
-            return Err(Error::InvalidUri);
-        }
-        let channel = Channel::from_number(path[0].parse()?)?;
-        let _datarate = path[1];
-        let address_str = path[2];
-
-        if address_str.len() != 10 {
-            return Err(Error::InvalidUri);
-        }
-        let mut address = [0u8; 5];
-        for i in 0..5 {
-            address[i] = u8::from_str_radix(&address_str[2 * i..(2 * i + 2)], 16)?;
-        }
+        let (radio_nth, channel, address) = self.parse_uri(uri)?;
 
         let radio = self.get_radio(radio_nth)?;
 
