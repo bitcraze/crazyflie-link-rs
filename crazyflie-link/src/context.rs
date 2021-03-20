@@ -2,11 +2,12 @@ use crate::error::{Error, Result};
 use crate::Connection;
 use crate::RadioThread;
 use crazyradio::Channel;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
 pub struct LinkContext {
-    radios: Vec<Mutex<Weak<RadioThread>>>,
+    radios: Mutex<BTreeMap<usize, Weak<RadioThread>>>,
 }
 
 impl Default for LinkContext {
@@ -18,18 +19,22 @@ impl Default for LinkContext {
 impl LinkContext {
     pub fn new() -> Self {
         Self {
-            radios: vec![Mutex::new(Weak::new())],
+            radios: Mutex::new(BTreeMap::new()),
         }
     }
 
     fn get_radio(&self, radio_nth: usize) -> Result<Arc<RadioThread>> {
-        let mut radio = self.radios[radio_nth].lock().unwrap();
-        let radio = match Weak::upgrade(&radio) {
+        let mut radios = self.radios.lock().unwrap();
+
+        radios.entry(radio_nth).or_insert(Weak::new());
+
+        let radio = match Weak::upgrade(&radios[&radio_nth]) {
             Some(radio) => radio,
             None => {
                 let new_radio = crazyradio::Crazyradio::open_nth(radio_nth)?;
                 let new_radio = Arc::new(RadioThread::new(new_radio));
-                *radio = Arc::downgrade(&new_radio);
+                radios.insert(radio_nth, Arc::downgrade(&new_radio));
+
                 new_radio
             }
         };
@@ -78,10 +83,6 @@ impl LinkContext {
         let mut address = [0u8; 5];
         for i in 0..5 {
             address[i] = u8::from_str_radix(&address_str[2 * i..(2 * i + 2)], 16)?;
-        }
-
-        if radio_nth >= self.radios.len() {
-            return Err(Error::InvalidUri);
         }
 
         let radio = self.get_radio(radio_nth)?;
