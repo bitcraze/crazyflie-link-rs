@@ -4,6 +4,7 @@ use crate::RadioThread;
 use crazyradio::Channel;
 use std::collections::BTreeMap;
 use hex::FromHex;
+use std::borrow::Cow;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
@@ -42,7 +43,7 @@ impl LinkContext {
         Ok(radio)
     }
 
-    fn parse_uri(&self, uri: &str) -> Result<(usize, Channel, [u8; 5])> {
+    fn parse_uri(&self, uri: &str) -> Result<(usize, Channel, [u8; 5], bool)> {
         let uri = Url::parse(uri)?;
 
         if uri.scheme() != "radio" {
@@ -68,7 +69,14 @@ impl LinkContext {
             Err(_) => return Err(Error::InvalidUri),
         };
 
-        Ok((radio, channel, address))
+        let mut safelink = true;
+        for (key, value) in uri.query_pairs() {
+            if key == Cow::Borrowed("safelink") {
+                safelink = value == Cow::Borrowed("1");
+            }
+        }
+
+        Ok((radio, channel, address, safelink))
     }
 
     pub fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
@@ -91,10 +99,10 @@ impl LinkContext {
     }
 
     pub fn open_link(&self, uri: &str) -> Result<Connection> {
-        let (radio_nth, channel, address) = self.parse_uri(uri)?;
+        let (radio_nth, channel, address, safelink) = self.parse_uri(uri)?;
 
         let radio = self.get_radio(radio_nth)?;
 
-        Connection::new(radio, channel, address)
+        Connection::new(radio, channel, address, safelink)
     }
 }
