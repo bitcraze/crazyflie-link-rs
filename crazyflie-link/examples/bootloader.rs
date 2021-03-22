@@ -64,12 +64,15 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
     let packet: Packet = vec![0xFF, TARGET_NRF51, 0xFF].into();
     link.send_packet(packet)?;
 
-    let mut new_address = [0xb1; 5];
+    let mut new_address = Vec::new();
     loop {
         let packet = link.recv_packet_timeout(Duration::from_millis(100))?;
         let data = packet.get_data();
         if data.len() > 2 && data[0..2] == [TARGET_NRF51, 0xFF] {
-            new_address[1..5].copy_from_slice(&data[2..6]);
+            new_address.push(0xb1);
+            for byte in data[2..6].iter().rev() { // handle little-endian order
+                new_address.push(*byte);
+            }
             break;
         }
     }
@@ -82,7 +85,7 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
 
     Ok(format!(
         "radio://0/0/2M/{}?safelink=0",
-        hex::encode(new_address.to_vec()).to_uppercase()
+        hex::encode(new_address).to_uppercase()
     ))
 }
 
