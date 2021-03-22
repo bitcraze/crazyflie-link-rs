@@ -98,6 +98,19 @@ impl LinkContext {
         Ok(found)
     }
 
+    pub fn scan_selected(&self, uris: Vec<&str>) -> Result<Vec<String>> {
+        let mut found = Vec::new();
+        for uri in uris {
+            let (radio_nth, channel, address, _) = self.parse_uri(uri)?;
+            let radio = self.get_radio(radio_nth)?;
+            let (ack, _) = radio.send_packet(channel, address, vec![0xFF, 0xFF, 0xFF])?;
+            if ack.received {
+                found.push(String::from(uri));
+            }
+        }
+        Ok(found)
+    }
+
     pub fn open_link(&self, uri: &str) -> Result<Connection> {
         let (radio_nth, channel, address, safelink) = self.parse_uri(uri)?;
 
