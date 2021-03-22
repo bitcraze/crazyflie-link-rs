@@ -30,7 +30,12 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(radio: Arc<RadioThread>, channel: Channel, address: [u8; 5]) -> Result<Connection> {
+    pub fn new(
+        radio: Arc<RadioThread>,
+        channel: Channel,
+        address: [u8; 5],
+        use_safelink: bool,
+    ) -> Result<Connection> {
         let status = Arc::new(RwLock::new(ConnectionStatus::Connecting));
 
         let disconnect_canary = Arc::new(());
@@ -49,6 +54,7 @@ impl Connection {
             downlink_send,
             channel,
             address,
+            use_safelink,
         );
         let thread_handle = std::thread::spawn(move || {
             if let Err(e) = thread.run(ci) {
@@ -101,6 +107,7 @@ struct ConnectionThread {
     downlink: crossbeam_channel::Sender<Vec<u8>>,
     channel: Channel,
     address: [u8; 5],
+    use_safelink: bool,
 }
 
 impl ConnectionThread {
@@ -112,6 +119,7 @@ impl ConnectionThread {
         downlink: crossbeam_channel::Sender<Vec<u8>>,
         channel: Channel,
         address: [u8; 5],
+        use_safelink: bool,
     ) -> Self {
         ConnectionThread {
             radio,
@@ -123,6 +131,7 @@ impl ConnectionThread {
             downlink,
             channel,
             address,
+            use_safelink,
         }
     }
 
@@ -171,24 +180,20 @@ impl ConnectionThread {
         Ok((ack, ack_payload))
     }
 
+    fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crazyradio::Ack, Vec<u8>)> {
+        if safe {
+            self.send_packet_safe(packet)
+        } else {
+            self.radio.send_packet(self.channel, self.address, packet)
+        }
+    }
+
     fn run(&mut self, connection_initialized: WaitGroup) -> Result<()> {
         info!("Connecting to {:?}/{:X?} ...", self.channel, self.address);
 
-        // Try to initialize safelink
-        // This server only supports safelink, if it cannot be enabled
-        // the Crazyflie is deemed not connectable
-        if !self.enable_safelink()? {
-            self.update_status(ConnectionStatus::Disconnected(
-                "Cannot initialize connection".to_string(),
-            ));
-            warn!(
-                "Cannot initialize connection with {:?}/{:X?}",
-                self.channel, self.address
-            );
-            return Ok(());
-        }
+        // Try to initialize safelink if in use
+        let safelink = self.use_safelink && self.enable_safelink()?;
 
-        // Safelink is initialized, we are connected!
         self.update_status(ConnectionStatus::Connected);
         drop(connection_initialized);
 
@@ -209,7 +214,7 @@ impl ConnectionThread {
                 }
             }
 
-            let (ack, mut ack_payload) = self.send_packet_safe(packet.clone())?;
+            let (ack, mut ack_payload) = self.send_packet(packet.clone(), safelink)?;
 
             if ack.received {
                 last_pk_time = time::Instant::now();
@@ -217,8 +222,16 @@ impl ConnectionThread {
 
                 // Add some relaxation time if the Crazyflie has nothing to send back
                 // for a while
-                if !ack_payload.is_empty() && (ack_payload[0] & 0xF3) != 0xF3 {
-                    ack_payload[0] &= 0xF3;
+                let empty = if safelink {
+                    ack_payload.is_empty() || (ack_payload[0] & 0xF3) == 0xF3
+                } else {
+                    ack_payload.is_empty()
+                };
+
+                if !empty {
+                    if safelink {
+                        ack_payload[0] &= 0xF3;
+                    }
                     self.downlink.send(ack_payload)?;
                     relax_timeout = Duration::from_nanos(0);
                 } else if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {

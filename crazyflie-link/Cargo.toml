@@ -16,4 +16,5 @@ hex = "0.4.3"
 
 [dev-dependencies]
 anyhow = "1"
+byteorder = "1.2.2"
 structopt = "0.3"

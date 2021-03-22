@@ -22,6 +22,12 @@ impl LinkContext {
             .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
     }
 
+    fn scan_selected(&self, uris: Vec<&str>) -> PyResult<Vec<String>> {
+        self.context
+            .scan_selected(uris)
+            .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+    }
+
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
         let connection = self
             .context

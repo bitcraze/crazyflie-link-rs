@@ -1,6 +1,7 @@
 use std::fmt;
 
 pub struct Packet {
+    header: u8,
     port: u8,
     channel: u8,
     data: Vec<u8>,
@@ -34,6 +35,7 @@ impl From<Vec<u8>> for Packet {
         let data = v[1..].to_vec(); // the rest is data!
 
         Packet {
+            header,
             port,
             channel,
             data,
@@ -53,18 +55,19 @@ impl From<Packet> for Vec<u8> {
 
 impl Packet {
     pub fn new(port: u8, channel: u8, data: Vec<u8>) -> Self {
+        let mut header = 0;
+
+        // channel is at bit 1 to 2
+        header |= channel & 0x03; // header => 000000cc
+
+        // port is at bit 5 to 8
+        header |= (port << 4) & 0xF0; // header => pppp00cc
+
         Packet {
+            header,
             port,
             channel,
             data,
-        }
-    }
-
-    pub fn new_from_header(header: u8) -> Self {
-        Packet {
-            port: (header & 0xF0) >> 4,
-            channel: header & 0x03,
-            data: Vec::new(),
         }
     }
 
@@ -89,12 +92,6 @@ impl Packet {
         // See the From trait implementation above for more details of the
         // vector format.
         //
-        let mut header = 0;
-
-        // channel is at bit 1 to 2
-        header |= self.channel & 0x03; // header => 000000cc
-
-        // port is at bit 5 to 8
-        header | (self.port << 4) & 0xF0 // header => pppp00cc
+        self.header
     }
 }
