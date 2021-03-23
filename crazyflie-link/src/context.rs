@@ -5,7 +5,6 @@ use crate::RadioThread;
 use crazyradio::Channel;
 use std::collections::BTreeMap;
 use hex::FromHex;
-use std::borrow::Cow;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
@@ -72,14 +71,14 @@ impl LinkContext {
 
         let mut flags = ConnectionFlags::SAFELINK | ConnectionFlags::ACKFILTER;
         for (key, value) in uri.query_pairs() {
-            match key {
-                Cow::Borrowed("safelink") => {
-                    if value == Cow::Borrowed("0") {
+            match key.as_ref() {
+                "safelink" => {
+                    if value == "0" {
                         flags.remove(ConnectionFlags::SAFELINK);
                     }
                 }
-                Cow::Borrowed("ackfilter") => {
-                    if value == Cow::Borrowed("0") {
+                "ackfilter" => {
+                    if value == "0" {
                         flags.remove(ConnectionFlags::ACKFILTER);
                     }
                 }
