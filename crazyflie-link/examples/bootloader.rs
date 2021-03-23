@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use crazyflie_link::{Connection, LinkContext, Packet};
 use std::time::Duration;
@@ -31,8 +31,8 @@ struct BootloaderInfo {
 fn scan_for_bootloader() -> Result<String> {
     let context = crate::LinkContext::new();
     let res = context.scan_selected(vec![
-        "radio://0/110/2M/E7E7E7E7E7?safelink=0",
-        "radio://0/0/2M/E7E7E7E7E7?safelink=0",
+        "radio://0/110/2M/E7E7E7E7E7",
+        "radio://0/0/2M/E7E7E7E7E7",
     ])?;
 
     if res.is_empty() {
@@ -43,21 +43,27 @@ fn scan_for_bootloader() -> Result<String> {
 }
 
 fn get_info(link: &Connection, target: u8) -> Result<BootloaderInfo> {
-    let packet: Packet = vec![0xFF, target, 0x10].into();
+    for _ in 0..5 {
+        let packet: Packet = vec![0xFF, target, 0x10].into();
 
-    link.send_packet(packet)?;
-    let packet = link.recv_packet_timeout(Duration::from_millis(100))?;
-    let data = packet.get_data();
+        link.send_packet(packet)?;
+        let packet = link.recv_packet_timeout(Duration::from_millis(100))?;
+        let data = packet.get_data();
 
-    Ok(BootloaderInfo {
-        id: data[0],
-        protocol_version: data[1],
-        page_size: LittleEndian::read_u16(&data[2..4]),
-        buffer_pages: LittleEndian::read_u16(&data[4..6]),
-        flash_pages: LittleEndian::read_u16(&data[6..8]),
-        start_page: LittleEndian::read_u16(&data[8..10]),
-        cpuid: LittleEndian::read_u16(&data[10..12]),
-    })
+        if packet.get_header() == 0xFF && data.len() >= 2 && data[0..2] == [target, 0x10] {
+            return Ok(BootloaderInfo {
+                id: data[0],
+                protocol_version: data[1],
+                page_size: LittleEndian::read_u16(&data[2..4]),
+                buffer_pages: LittleEndian::read_u16(&data[4..6]),
+                flash_pages: LittleEndian::read_u16(&data[6..8]),
+                start_page: LittleEndian::read_u16(&data[8..10]),
+                cpuid: LittleEndian::read_u16(&data[10..12]),
+            });
+        }
+    }
+
+    Err(anyhow!("Failed to get info"))
 }
 
 fn reset_to_bootloader(link: &Connection) -> Result<String> {
@@ -84,7 +90,7 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
     std::thread::sleep(Duration::from_secs(1));
 
     Ok(format!(
-        "radio://0/0/2M/{}?safelink=0",
+        "radio://0/0/2M/{}?safelink=0&ackfilter=0",
         hex::encode(new_address).to_uppercase()
     ))
 }

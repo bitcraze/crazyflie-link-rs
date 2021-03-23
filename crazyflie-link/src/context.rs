@@ -1,10 +1,10 @@
 use crate::error::{Error, Result};
 use crate::Connection;
+use crate::ConnectionFlags;
 use crate::RadioThread;
 use crazyradio::Channel;
 use std::collections::BTreeMap;
 use hex::FromHex;
-use std::borrow::Cow;
 use std::sync::{Arc, Mutex, Weak};
 use url::Url;
 
@@ -43,7 +43,7 @@ impl LinkContext {
         Ok(radio)
     }
 
-    fn parse_uri(&self, uri: &str) -> Result<(usize, Channel, [u8; 5], bool)> {
+    fn parse_uri(&self, uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags)> {
         let uri = Url::parse(uri)?;
 
         if uri.scheme() != "radio" {
@@ -69,14 +69,24 @@ impl LinkContext {
             Err(_) => return Err(Error::InvalidUri),
         };
 
-        let mut safelink = true;
+        let mut flags = ConnectionFlags::SAFELINK | ConnectionFlags::ACKFILTER;
         for (key, value) in uri.query_pairs() {
-            if key == Cow::Borrowed("safelink") {
-                safelink = value == Cow::Borrowed("1");
-            }
+            match key.as_ref() {
+                "safelink" => {
+                    if value == "0" {
+                        flags.remove(ConnectionFlags::SAFELINK);
+                    }
+                }
+                "ackfilter" => {
+                    if value == "0" {
+                        flags.remove(ConnectionFlags::ACKFILTER);
+                    }
+                }
+                _ => continue,
+            };
         }
 
-        Ok((radio, channel, address, safelink))
+        Ok((radio, channel, address, flags))
     }
 
     pub fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
@@ -105,17 +115,20 @@ impl LinkContext {
             let radio = self.get_radio(radio_nth)?;
             let (ack, _) = radio.send_packet(channel, address, vec![0xFF, 0xFF, 0xFF])?;
             if ack.received {
-                found.push(String::from(uri));
+                found.push(format!(
+                    "{}{}",
+                    uri, "?safelink=0&ackfilter=0"
+                ));
             }
         }
         Ok(found)
     }
 
     pub fn open_link(&self, uri: &str) -> Result<Connection> {
-        let (radio_nth, channel, address, safelink) = self.parse_uri(uri)?;
+        let (radio_nth, channel, address, flags) = self.parse_uri(uri)?;
 
         let radio = self.get_radio(radio_nth)?;
 
-        Connection::new(radio, channel, address, safelink)
+        Connection::new(radio, channel, address, flags)
     }
 }

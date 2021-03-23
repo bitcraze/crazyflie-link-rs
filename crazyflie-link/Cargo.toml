@@ -5,6 +5,7 @@ authors = ["Arnaud Taffanel <arnaud@bitcraze.io>"]
 edition = "2018"
 
 [dependencies]
+bitflags = "1.0"
 crazyradio = "0.1.5"
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
