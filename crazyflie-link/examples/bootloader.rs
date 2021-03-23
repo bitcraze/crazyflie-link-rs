@@ -47,7 +47,7 @@ fn get_info(link: &Connection, target: u8) -> Result<BootloaderInfo> {
         let packet: Packet = vec![0xFF, target, 0x10].into();
 
         link.send_packet(packet)?;
-        let packet = link.recv_packet_timeout(Duration::from_millis(100))?;
+        let packet = link.recv_packet_timeout(Duration::from_millis(100))?.unwrap();
         let data = packet.get_data();
 
         if packet.get_header() == 0xFF && data.len() >= 2 && data[0..2] == [target, 0x10] {
@@ -72,7 +72,7 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
 
     let mut new_address = Vec::new();
     loop {
-        let packet = link.recv_packet_timeout(Duration::from_millis(100))?;
+        let packet = link.recv_packet_timeout(Duration::from_millis(100))?.unwrap();
         let data = packet.get_data();
         if data.len() > 2 && data[0..2] == [TARGET_NRF51, 0xFF] {
             new_address.push(0xb1);

@@ -98,8 +98,13 @@ impl Connection {
         Ok(())
     }
 
-    pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Packet> {
-        let packet = Packet::from(self.downlink.recv_timeout(timeout)?);
+    pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Option<Packet>> {
+        let packet = match self.downlink.recv_timeout(timeout) {
+            Ok(packet) => Some(packet.into()),
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => None,
+            Err(e) => return Err(e.into()),
+
+        };
         Ok(packet)
     }
 }

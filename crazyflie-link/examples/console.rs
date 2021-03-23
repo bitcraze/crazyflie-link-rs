@@ -6,7 +6,7 @@ fn main() -> anyhow::Result<()> {
     let link = link_context.open_link("radio://0/60/2M/E7E7E7E7E7")?;
 
     loop {
-        let packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?;
+        let packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?.unwrap();
         let data = packet.get_data();
         if packet.get_header() == 0 {
             let line = String::from_utf8_lossy(&data[0..]);

@@ -28,7 +28,7 @@ fn bench<F: FnOnce() -> anyhow::Result<()>>(function: F) -> anyhow::Result<Durat
 fn purge_crazyflie_queues(link: &crazyflie_link::Connection) {
     // Purge crazyflie queues
     loop {
-        if let Err(_) = link.recv_packet_timeout(Duration::from_millis(100)) {
+        if let None = link.recv_packet_timeout(Duration::from_millis(100)).unwrap() {
             break;
         }
     }
@@ -46,17 +46,15 @@ fn main() -> anyhow::Result<()> {
     for i in 0..opt.n_packets {
         let mut packet = Packet::new(0xF, 0, vec![i as u8]);
         let ping_time = bench(|| {
-            let data;
-
             link.send_packet(packet)?;
             loop {
-                packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?;
+                packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?.unwrap();
                 if packet.get_header() == 0xf0 {
                     break;
                 }
             }
 
-            data = packet.get_data();
+            let data = packet.get_data();
             if data[0] != (i as u8) {
                 println!(
                     "Communication error! Expected {}, received {}.",
@@ -95,7 +93,7 @@ fn main() -> anyhow::Result<()> {
             let mut packet;
 
             loop {
-                packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?;
+                packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?.unwrap();
                 if packet.get_header() == 0xf0 {
                     break;
                 }

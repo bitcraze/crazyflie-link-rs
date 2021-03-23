@@ -62,19 +62,20 @@ impl Connection {
     }
 
     #[args(timeout = "100")]
-    fn receive_packet(&self, py: Python, timeout: u64) -> PyResult<Vec<u8>> {
-        py.allow_threads(move || loop {
-            let connection = self.connection.read().unwrap();
+    fn receive_packet(&self, py: Python, timeout: u64) -> PyResult<Option<Vec<u8>>> {
+            py.allow_threads(|| {
+                let connection = self.connection.read().unwrap();
 
-            if let Some(connection) = connection.as_ref() {
-                match connection.recv_packet_timeout(Duration::from_millis(timeout)) {
-                    Ok(pk) => return Ok(pk.into()),
-                    _ => Err(PyIOError::new_err("Timeout"))
+                if let Some(connection) = connection.as_ref() {
+                    let timeout = Duration::from_millis(timeout);
+                    match connection.recv_packet_timeout(timeout) {
+                        Ok(packet) => return Ok(packet.map(|p| p.into())),
+                        Err(_) => return Err(PyIOError::new_err("Link closed"))
+                    }
+                } else {
+                    return Err(PyIOError::new_err("Link closed"));
                 }
-            } else {
-                return Err(PyIOError::new_err("Link closed"));
-            }
-        })
+            })
     }
 
     fn close(&self) {
