@@ -14,6 +14,13 @@ use std::time::Duration;
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 const RELAX_DELAY: Duration = Duration::from_millis(0);
 
+bitflags! {
+    pub struct ConnectionFlags: u32 {
+        const SAFELINK = 0b00000001;
+        const ACKFILTER = 0b00000010;
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ConnectionStatus {
     Connecting,
@@ -34,7 +41,7 @@ impl Connection {
         radio: Arc<RadioThread>,
         channel: Channel,
         address: [u8; 5],
-        use_safelink: bool,
+        flags: ConnectionFlags,
     ) -> Result<Connection> {
         let status = Arc::new(RwLock::new(ConnectionStatus::Connecting));
 
@@ -54,7 +61,7 @@ impl Connection {
             downlink_send,
             channel,
             address,
-            use_safelink,
+            flags,
         );
         let thread_handle = std::thread::spawn(move || {
             if let Err(e) = thread.run(ci) {
@@ -107,7 +114,7 @@ struct ConnectionThread {
     downlink: crossbeam_channel::Sender<Vec<u8>>,
     channel: Channel,
     address: [u8; 5],
-    use_safelink: bool,
+    flags: ConnectionFlags,
 }
 
 impl ConnectionThread {
@@ -119,7 +126,7 @@ impl ConnectionThread {
         downlink: crossbeam_channel::Sender<Vec<u8>>,
         channel: Channel,
         address: [u8; 5],
-        use_safelink: bool,
+        flags: ConnectionFlags,
     ) -> Self {
         ConnectionThread {
             radio,
@@ -131,7 +138,7 @@ impl ConnectionThread {
             downlink,
             channel,
             address,
-            use_safelink,
+            flags,
         }
     }
 
@@ -188,11 +195,49 @@ impl ConnectionThread {
         }
     }
 
+    fn use_safelink(&self) -> bool {
+        self.flags.contains(ConnectionFlags::SAFELINK)
+    }
+
+    //
+    // In order to know whether or not to handle and send this ack back to
+    // the receiver we need to check some stuff.
+    //
+    // In safelink we deem a payload empty if it only containx 0xF3, and we do
+    // not handle it.
+    //
+    // When not using safelink (perhaps communicating with bootloader) we check
+    // if the ackfilter flag is not set. If we have no ack filter then we
+    // handle payload-less acks as well.
+    //
+    fn preprocess_ack(&self, payload: &mut Vec<u8>, safelink: bool) -> bool {
+        if safelink {
+            if !payload.is_empty() && payload[0] & 0xF3 != 0xF3 {
+                payload[0] &= 0xF3;
+                return true;
+            }
+            return false;
+        }
+
+        // not safelink
+
+        if !payload.is_empty() {
+            return true;
+        }
+
+        if !self.flags.contains(ConnectionFlags::ACKFILTER) {
+            *payload = vec![0xFF];
+            return true;
+        }
+
+        false
+    }
+
     fn run(&mut self, connection_initialized: WaitGroup) -> Result<()> {
         info!("Connecting to {:?}/{:X?} ...", self.channel, self.address);
 
         // Try to initialize safelink if in use
-        let safelink = self.use_safelink && self.enable_safelink()?;
+        let safelink = self.use_safelink() && self.enable_safelink()?;
 
         self.update_status(ConnectionStatus::Connected);
         drop(connection_initialized);
@@ -222,16 +267,9 @@ impl ConnectionThread {
 
                 // Add some relaxation time if the Crazyflie has nothing to send back
                 // for a while
-                let empty = if safelink {
-                    ack_payload.is_empty() || (ack_payload[0] & 0xF3) == 0xF3
-                } else {
-                    ack_payload.is_empty()
-                };
 
-                if !empty {
-                    if safelink {
-                        ack_payload[0] &= 0xF3;
-                    }
+                let should_handle = self.preprocess_ack(&mut ack_payload, safelink);
+                if should_handle {
                     self.downlink.send(ack_payload)?;
                     relax_timeout = Duration::from_nanos(0);
                 } else if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
