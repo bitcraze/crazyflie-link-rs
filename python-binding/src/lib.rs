@@ -69,7 +69,7 @@ impl Connection {
             if let Some(connection) = connection.as_ref() {
                 match connection.recv_packet_timeout(Duration::from_millis(timeout)) {
                     Ok(pk) => return Ok(pk.into()),
-                    _ => continue,
+                    _ => Err(PyIOError::new_err("Timeout"))
                 }
             } else {
                 return Err(PyIOError::new_err("Link closed"));
