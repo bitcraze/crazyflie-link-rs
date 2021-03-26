@@ -103,7 +103,6 @@ impl Connection {
             Ok(packet) => Some(packet.into()),
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => None,
             Err(e) => return Err(e.into()),
-
         };
         Ok(packet)
     }
@@ -176,17 +175,20 @@ impl ConnectionThread {
         packet[0] &= 0xF3;
         packet[0] |= (self.safelink_up_ctr << 3) | (self.safelink_down_ctr << 2);
 
-        let (ack, ack_payload) = self.radio.send_packet(self.channel, self.address, packet)?;
-
-        if ack.received && !ack_payload.is_empty() {
-            let received_down_ctr = (ack_payload[0] & 0x04) >> 2;
-            if received_down_ctr == self.safelink_down_ctr {
-                self.safelink_down_ctr = 1 - self.safelink_down_ctr;
-            }
-        }
+        let (ack, mut ack_payload) = self.radio.send_packet(self.channel, self.address, packet)?;
 
         if ack.received {
             self.safelink_up_ctr = 1 - self.safelink_up_ctr;
+        }
+
+        if ack.received
+            && !ack_payload.is_empty()
+            && (ack_payload[0] & 0x04) >> 2 == self.safelink_down_ctr
+        {
+            self.safelink_down_ctr = 1 - self.safelink_down_ctr;
+        } else {
+            // If the down counter does not match, this is a reapeted ack and the payload needs to be dropped
+            ack_payload.clear();
         }
 
         Ok((ack, ack_payload))
