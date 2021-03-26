@@ -97,7 +97,7 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
 
 fn start_bootloader(context: &LinkContext, warm: bool, uri: &str) -> Result<Connection> {
     let uri = if warm {
-        let link = context.open_link(&uri)?;
+        let link = context.open_link(&format!("{}?safelink=0", uri))?;
         let uri = reset_to_bootloader(&link);
         link.close();
         std::thread::sleep(Duration::from_secs(1));
