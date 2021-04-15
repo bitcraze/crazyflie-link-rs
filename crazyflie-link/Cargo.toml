@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 bitflags = "1.0"
 crazyradio = "0.1.5"
-crossbeam-channel = "0.5"
+flume = "0.10"
 crossbeam-utils = "0.8"
 log = "0.4"
 rand = "0.8"

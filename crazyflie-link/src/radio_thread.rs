@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crazyradio::{Channel, Crazyradio};
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use flume::{bounded, unbounded, Receiver, Sender};
 
 /// Multi-user threaded Crazyradio
 ///

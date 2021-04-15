@@ -30,8 +30,8 @@ pub enum ConnectionStatus {
 
 pub struct Connection {
     status: Arc<RwLock<ConnectionStatus>>,
-    uplink: crossbeam_channel::Sender<Vec<u8>>,
-    downlink: crossbeam_channel::Receiver<Vec<u8>>,
+    uplink: flume::Sender<Vec<u8>>,
+    downlink: flume::Receiver<Vec<u8>>,
     disconnect_canary: Arc<()>,
     thread_handle: JoinHandle<()>,
 }
@@ -47,8 +47,8 @@ impl Connection {
 
         let disconnect_canary = Arc::new(());
 
-        let (uplink_send, uplink_recv) = crossbeam_channel::unbounded();
-        let (downlink_send, downlink_recv) = crossbeam_channel::unbounded();
+        let (uplink_send, uplink_recv) = flume::unbounded();
+        let (downlink_send, downlink_recv) = flume::unbounded();
 
         let connection_initialized = WaitGroup::new();
 
@@ -101,7 +101,7 @@ impl Connection {
     pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Option<Packet>> {
         let packet = match self.downlink.recv_timeout(timeout) {
             Ok(packet) => Some(packet.into()),
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => None,
+            Err(flume::RecvTimeoutError::Timeout) => None,
             Err(e) => return Err(e.into()),
         };
         Ok(packet)
@@ -114,8 +114,8 @@ struct ConnectionThread {
     disconnect_canary: Weak<()>,
     safelink_up_ctr: u8,
     safelink_down_ctr: u8,
-    uplink: crossbeam_channel::Receiver<Vec<u8>>,
-    downlink: crossbeam_channel::Sender<Vec<u8>>,
+    uplink: flume::Receiver<Vec<u8>>,
+    downlink: flume::Sender<Vec<u8>>,
     channel: Channel,
     address: [u8; 5],
     flags: ConnectionFlags,
@@ -126,8 +126,8 @@ impl ConnectionThread {
         radio: Arc<RadioThread>,
         status: Arc<RwLock<ConnectionStatus>>,
         disconnect_canary: Weak<()>,
-        uplink: crossbeam_channel::Receiver<Vec<u8>>,
-        downlink: crossbeam_channel::Sender<Vec<u8>>,
+        uplink: flume::Receiver<Vec<u8>>,
+        downlink: flume::Sender<Vec<u8>>,
         channel: Channel,
         address: [u8; 5],
         flags: ConnectionFlags,
@@ -259,9 +259,9 @@ impl ConnectionThread {
             if !needs_resend {
                 packet = match self.uplink.recv_timeout(relax_timeout) {
                     Ok(pk) => pk,
-                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => vec![0xff], // Null packet
-                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                        return Err(Error::CrossbeamRecvError(crossbeam_channel::RecvError))
+                    Err(flume::RecvTimeoutError::Timeout) => vec![0xff], // Null packet
+                    Err(flume::RecvTimeoutError::Disconnected) => {
+                        return Err(Error::ChannelRecvError(flume::RecvError::Disconnected))
                     }
                 }
             }

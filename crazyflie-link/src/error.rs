@@ -1,4 +1,4 @@
-use crossbeam_channel::RecvTimeoutError;
+use flume::RecvTimeoutError;
 use std::num::ParseIntError;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -12,9 +12,9 @@ pub enum Error {
     #[error("Crazyradio error: {0:?}")]
     CrazyradioError(crazyradio::Error),
     #[error("Threading error: {0:?}")]
-    CrossbeamRecvError(crossbeam_channel::RecvError),
+    ChannelRecvError(flume::RecvError),
     #[error("Threading error: {0:?}")]
-    CrossbeamSendError(crossbeam_channel::SendError<Vec<u8>>),
+    ChannelSendError(flume::SendError<Vec<u8>>),
 }
 
 impl From<crazyradio::Error> for Error {
@@ -23,15 +23,15 @@ impl From<crazyradio::Error> for Error {
     }
 }
 
-impl From<crossbeam_channel::RecvError> for Error {
-    fn from(error: crossbeam_channel::RecvError) -> Self {
-        Error::CrossbeamRecvError(error)
+impl From<flume::RecvError> for Error {
+    fn from(error: flume::RecvError) -> Self {
+        Error::ChannelRecvError(error)
     }
 }
 
-impl From<crossbeam_channel::SendError<Vec<u8>>> for Error {
-    fn from(error: crossbeam_channel::SendError<Vec<u8>>) -> Self {
-        Error::CrossbeamSendError(error)
+impl From<flume::SendError<Vec<u8>>> for Error {
+    fn from(error: flume::SendError<Vec<u8>>) -> Self {
+        Error::ChannelSendError(error)
     }
 }
 
