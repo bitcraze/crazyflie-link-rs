@@ -1,5 +1,7 @@
 use pyo3::{exceptions::PyIOError, prelude::*};
 use std::{sync::RwLock, time::Duration};
+use async_std::task;
+use async_std::future;
 
 #[pyclass]
 struct LinkContext {
@@ -10,29 +12,35 @@ struct LinkContext {
 impl LinkContext {
     #[new]
     fn new() -> Self {
-        let context = crazyflie_link::LinkContext::new();
+        let context = crazyflie_link::LinkContext::new(std::sync::Arc::new(async_executors::AsyncStd));
 
         LinkContext { context }
     }
 
     #[args(address = "[0xe7; 5]")]
     fn scan(&self, address: [u8; 5]) -> PyResult<Vec<String>> {
-        self.context
-            .scan(address)
-            .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+        task::block_on(async {
+            self.context
+                .scan(address).await
+                .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+        })
     }
 
     fn scan_selected(&self, uris: Vec<&str>) -> PyResult<Vec<String>> {
-        self.context
-            .scan_selected(uris)
-            .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+        task::block_on(async {
+            self.context
+                .scan_selected(uris).await
+                .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+        })
     }
 
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
-        let connection = self
-            .context
-            .open_link(uri)
-            .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))?;
+        let connection = task::block_on(async {
+            self
+                .context
+                .open_link(uri).await
+                .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
+        })?;
 
         Ok(Connection {
             connection: RwLock::new(Some(connection)),
@@ -52,9 +60,11 @@ impl Connection {
             let connection = self.connection.read().unwrap();
 
             if let Some(connection) = connection.as_ref() {
-                connection
-                    .send_packet(crazyflie_link::Packet::from(packet))
-                    .map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
+                task::block_on(async {
+                    connection
+                        .send_packet(crazyflie_link::Packet::from(packet)).await
+                        .map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
+                })
             } else {
                 Err(PyErr::new::<PyIOError, _>("Link closed"))
             }
@@ -68,10 +78,20 @@ impl Connection {
 
                 if let Some(connection) = connection.as_ref() {
                     let timeout = Duration::from_millis(timeout);
-                    match connection.recv_packet_timeout(timeout) {
-                        Ok(packet) => return Ok(packet.map(|p| p.into())),
-                        Err(_) => return Err(PyIOError::new_err("Link closed"))
-                    }
+                    let pk = task::block_on(async {
+                        match future::timeout(timeout, connection.recv_packet()).await {
+                            Ok(packet) => {
+                                if let Ok(packet) = packet {
+                                    Ok(packet.into())
+                                } else {
+                                    Err(PyIOError::new_err("Link closed"))
+                                }
+                                
+                            }
+                            Err(_) => Ok(None)
+                        }
+                    });
+                    return pk.map(|p| p.map(|p| p.into()));
                 } else {
                     return Err(PyIOError::new_err("Link closed"));
                 }
@@ -80,7 +100,9 @@ impl Connection {
 
     fn close(&self) {
         if let Some(connection) = self.connection.write().unwrap().take() {
-            connection.close()
+            task::block_on(async {
+                connection.close().await
+            })
         }
     }
 }

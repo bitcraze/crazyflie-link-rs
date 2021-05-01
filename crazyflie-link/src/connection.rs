@@ -1,15 +1,14 @@
 // Connection handling code
 use crate::error::{Error, Result};
-use crate::radio_thread::RadioThread;
 use crate::Packet;
-use crazyradio::Channel;
-use crossbeam_utils::sync::WaitGroup;
+use crazyradio::{SharedCrazyradio, Channel};
 use log::{debug, info, warn};
-use std::sync::RwLock;
 use std::sync::{Arc, Weak};
-use std::thread::JoinHandle;
 use std::time;
 use std::time::Duration;
+use async_executors::{SpawnHandle, JoinHandle, SpawnHandleExt};
+use futures_util::lock::Mutex;
+use futures::channel::oneshot;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 const RELAX_DELAY: Duration = Duration::from_millis(0);
@@ -29,7 +28,7 @@ pub enum ConnectionStatus {
 }
 
 pub struct Connection {
-    status: Arc<RwLock<ConnectionStatus>>,
+    status: Arc<Mutex<ConnectionStatus>>,
     uplink: flume::Sender<Vec<u8>>,
     downlink: flume::Receiver<Vec<u8>>,
     disconnect_canary: Arc<()>,
@@ -37,22 +36,22 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(
-        radio: Arc<RadioThread>,
+    pub async fn new(
+        executor: Arc<dyn SpawnHandle<()>>,
+        radio: Arc<SharedCrazyradio>,
         channel: Channel,
         address: [u8; 5],
         flags: ConnectionFlags,
     ) -> Result<Connection> {
-        let status = Arc::new(RwLock::new(ConnectionStatus::Connecting));
+        let status = Arc::new(Mutex::new(ConnectionStatus::Connecting));
 
         let disconnect_canary = Arc::new(());
 
         let (uplink_send, uplink_recv) = flume::unbounded();
         let (downlink_send, downlink_recv) = flume::unbounded();
 
-        let connection_initialized = WaitGroup::new();
+        let (connection_initialized_send, connection_initialized) = oneshot::channel();
 
-        let ci = connection_initialized.clone();
         let mut thread = ConnectionThread::new(
             radio,
             status.clone(),
@@ -63,17 +62,17 @@ impl Connection {
             address,
             flags,
         );
-        let thread_handle = std::thread::spawn(move || {
-            if let Err(e) = thread.run(ci) {
+        let thread_handle = executor.spawn_handle (async move {
+            if let Err(e) = thread.run(connection_initialized_send).await {
                 thread.update_status(ConnectionStatus::Disconnected(format!(
                     "Connection error: {}",
                     e
-                )))
+                ))).await;
             }
-        });
+        }).expect("Spawning connection task");
 
         // Wait for, either, the connection being established or failed initialization
-        connection_initialized.wait();
+        connection_initialized.await.unwrap();
 
         Ok(Connection {
             status,
@@ -84,33 +83,29 @@ impl Connection {
         })
     }
 
-    pub fn close(self) {
+    pub async fn close(self) {
         drop(self.disconnect_canary);
-        self.thread_handle.join().unwrap();
+        self.thread_handle.await;
     }
 
-    pub fn status(&self) -> ConnectionStatus {
-        self.status.read().unwrap().clone()
+    pub async fn status(&self) -> ConnectionStatus {
+        self.status.lock().await.clone()
     }
 
-    pub fn send_packet(&self, packet: Packet) -> Result<()> {
-        self.uplink.send(packet.into())?;
+    pub async fn send_packet(&self, packet: Packet) -> Result<()> {
+        self.uplink.send_async(packet.into()).await?;
         Ok(())
     }
 
-    pub fn recv_packet_timeout(&self, timeout: Duration) -> Result<Option<Packet>> {
-        let packet = match self.downlink.recv_timeout(timeout) {
-            Ok(packet) => Some(packet.into()),
-            Err(flume::RecvTimeoutError::Timeout) => None,
-            Err(e) => return Err(e.into()),
-        };
-        Ok(packet)
+    pub async fn recv_packet(&self) -> Result<Packet> {
+        let packet = self.downlink.recv_async().await?;
+        Ok(packet.into())
     }
 }
 
 struct ConnectionThread {
-    radio: Arc<RadioThread>,
-    status: Arc<RwLock<ConnectionStatus>>,
+    radio: Arc<SharedCrazyradio>,
+    status: Arc<Mutex<ConnectionStatus>>,
     disconnect_canary: Weak<()>,
     safelink_up_ctr: u8,
     safelink_down_ctr: u8,
@@ -123,8 +118,8 @@ struct ConnectionThread {
 
 impl ConnectionThread {
     fn new(
-        radio: Arc<RadioThread>,
-        status: Arc<RwLock<ConnectionStatus>>,
+        radio: Arc<SharedCrazyradio>,
+        status: Arc<Mutex<ConnectionStatus>>,
         disconnect_canary: Weak<()>,
         uplink: flume::Receiver<Vec<u8>>,
         downlink: flume::Sender<Vec<u8>>,
@@ -146,18 +141,18 @@ impl ConnectionThread {
         }
     }
 
-    fn update_status(&self, new_status: ConnectionStatus) {
+    async fn update_status(&self, new_status: ConnectionStatus) {
         debug!("New status: {:?}", &new_status);
-        let mut status = self.status.write().unwrap();
+        let mut status = self.status.lock().await;
         *status = new_status;
     }
 
-    fn enable_safelink(&mut self) -> Result<bool> {
+    async fn enable_safelink(&mut self) -> Result<bool> {
         // Tying 10 times to reset safelink
         for _ in 0..10 {
             let (ack, payload) =
                 self.radio
-                    .send_packet(self.channel, self.address, vec![0xff, 0x05, 0x01])?;
+                    .send_packet_async(self.channel, self.address, vec![0xff, 0x05, 0x01]).await?;
 
             if ack.received && payload == [0xff, 0x05, 0x01] {
                 self.safelink_down_ctr = 0;
@@ -195,11 +190,13 @@ impl ConnectionThread {
     }
 
     fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crazyradio::Ack, Vec<u8>)> {
-        if safe {
-            self.send_packet_safe(packet)
+        let result = if safe {
+            self.send_packet_safe(packet)?
         } else {
-            self.radio.send_packet(self.channel, self.address, packet)
-        }
+            self.radio.send_packet(self.channel, self.address, packet)?
+        };
+
+        Ok(result)
     }
 
     fn use_safelink(&self) -> bool {
@@ -240,14 +237,14 @@ impl ConnectionThread {
         false
     }
 
-    fn run(&mut self, connection_initialized: WaitGroup) -> Result<()> {
+    async fn run(&mut self, connection_initialized: oneshot::Sender<()>) -> Result<()> {
         info!("Connecting to {:?}/{:X?} ...", self.channel, self.address);
 
         // Try to initialize safelink if in use
-        let safelink = self.use_safelink() && self.enable_safelink()?;
+        let safelink = self.use_safelink() && self.enable_safelink().await?;
 
-        self.update_status(ConnectionStatus::Connected);
-        drop(connection_initialized);
+        self.update_status(ConnectionStatus::Connected).await;
+        connection_initialized.send(()).unwrap();
 
         // Communication loop ...
         let mut last_pk_time = time::Instant::now();
@@ -299,7 +296,7 @@ impl ConnectionThread {
 
         self.update_status(ConnectionStatus::Disconnected(
             "Connection timeout".to_string(),
-        ));
+        )).await;
 
         warn!(
             "Connection to {:?}/{:X?} lost (timeout)",

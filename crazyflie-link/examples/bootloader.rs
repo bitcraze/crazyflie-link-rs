@@ -3,6 +3,8 @@ use byteorder::{ByteOrder, LittleEndian};
 use crazyflie_link::{Connection, LinkContext, Packet};
 use std::time::Duration;
 use structopt::StructOpt;
+use async_std::future::timeout;
+use std::sync::Arc;
 
 const TARGET_STM32: u8 = 0xFF;
 const TARGET_NRF51: u8 = 0xFE;
@@ -28,12 +30,12 @@ struct BootloaderInfo {
     cpuid: u16,
 }
 
-fn scan_for_bootloader() -> Result<String> {
-    let context = crate::LinkContext::new();
+async fn scan_for_bootloader() -> Result<String> {
+    let context = crate::LinkContext::new(Arc::new(async_executors::AsyncStd));
     let res = context.scan_selected(vec![
         "radio://0/110/2M/E7E7E7E7E7",
         "radio://0/0/2M/E7E7E7E7E7",
-    ])?;
+    ]).await?;
 
     if res.is_empty() {
         Ok(String::from(""))
@@ -42,12 +44,12 @@ fn scan_for_bootloader() -> Result<String> {
     }
 }
 
-fn get_info(link: &Connection, target: u8) -> Result<BootloaderInfo> {
+async fn get_info(link: &Connection, target: u8) -> Result<BootloaderInfo> {
     for _ in 0..5 {
         let packet: Packet = vec![0xFF, target, 0x10].into();
 
-        link.send_packet(packet)?;
-        let packet = link.recv_packet_timeout(Duration::from_millis(100))?.unwrap();
+        link.send_packet(packet).await?;
+        let packet = timeout(Duration::from_millis(100), link.recv_packet()).await?.unwrap();
         let data = packet.get_data();
 
         if packet.get_header() == 0xFF && data.len() >= 2 && data[0..2] == [target, 0x10] {
@@ -66,13 +68,13 @@ fn get_info(link: &Connection, target: u8) -> Result<BootloaderInfo> {
     Err(anyhow!("Failed to get info"))
 }
 
-fn reset_to_bootloader(link: &Connection) -> Result<String> {
+async fn reset_to_bootloader(link: &Connection) -> Result<String> {
     let packet: Packet = vec![0xFF, TARGET_NRF51, 0xFF].into();
-    link.send_packet(packet)?;
+    link.send_packet(packet).await?;
 
     let mut new_address = Vec::new();
     loop {
-        let packet = link.recv_packet_timeout(Duration::from_millis(100))?.unwrap();
+        let packet = timeout(Duration::from_millis(100), link.recv_packet()).await?.unwrap();
         let data = packet.get_data();
         if data.len() > 2 && data[0..2] == [TARGET_NRF51, 0xFF] {
             new_address.push(0xb1);
@@ -85,9 +87,9 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
 
     for _ in 0..10 {
         let packet: Packet = vec![0xFF, TARGET_NRF51, 0xF0, 0x00].into();
-        link.send_packet(packet)?;
+        link.send_packet(packet).await?;
     }
-    std::thread::sleep(Duration::from_secs(1));
+    async_std::task::sleep(Duration::from_secs(1)).await;
 
     Ok(format!(
         "radio://0/0/2M/{}?safelink=0&ackfilter=0",
@@ -95,24 +97,25 @@ fn reset_to_bootloader(link: &Connection) -> Result<String> {
     ))
 }
 
-fn start_bootloader(context: &LinkContext, warm: bool, uri: &str) -> Result<Connection> {
+async fn start_bootloader(context: &LinkContext, warm: bool, uri: &str) -> Result<Connection> {
     let uri = if warm {
-        let link = context.open_link(&format!("{}?safelink=0", uri))?;
-        let uri = reset_to_bootloader(&link);
-        link.close();
-        std::thread::sleep(Duration::from_secs(1));
+        let link = context.open_link(&format!("{}?safelink=0", uri)).await?;
+        let uri = reset_to_bootloader(&link).await;
+        link.close().await;
+        async_std::task::sleep(Duration::from_secs(1)).await;
         uri
     } else {
-        scan_for_bootloader()
+        scan_for_bootloader().await
     }?;
 
-    let link = context.open_link(&uri)?;
+    let link = context.open_link(&uri).await?;
     Ok(link)
 }
 
-fn main() -> Result<()> {
+#[async_std::main]
+async fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let context = LinkContext::new();
+    let context = LinkContext::new(Arc::new(async_executors::AsyncStd));
     let mut uri = String::new();
 
     if opt.warm {
@@ -125,13 +128,13 @@ fn main() -> Result<()> {
         };
     }
 
-    let link = start_bootloader(&context, opt.warm, &uri)?;
+    let link = start_bootloader(&context, opt.warm, &uri).await?;
 
-    if let Ok(info) = get_info(&link, TARGET_STM32) {
+    if let Ok(info) = get_info(&link, TARGET_STM32).await {
         println!("\n== stm32 ==\n{:#?}", info);
     }
 
-    if let Ok(info) = get_info(&link, TARGET_NRF51) {
+    if let Ok(info) = get_info(&link, TARGET_NRF51).await {
         println!("\n== nrf51 ==\n{:#?}", info);
     }
 

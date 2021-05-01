@@ -1,10 +1,13 @@
 // Simple benchmark test, test ping time and duplex bandwidth
 use crazyflie_link::{LinkContext, Packet};
+use futures::Future;
 use std::{
     ops::Div,
     time::{Duration, Instant},
 };
 use structopt::StructOpt;
+use std::sync::Arc;
+use async_std::future::timeout;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bandwidth")]
@@ -19,36 +22,37 @@ struct Opt {
     link_uri: String,
 }
 
-fn bench<F: FnOnce() -> anyhow::Result<()>>(function: F) -> anyhow::Result<Duration> {
+async fn bench<F: Future<Output = anyhow::Result<()>>>(function: F) -> anyhow::Result<Duration> {
     let start = Instant::now();
-    function()?;
+    function.await?;
     Ok(Instant::now() - start)
 }
 
-fn purge_crazyflie_queues(link: &crazyflie_link::Connection) {
+async fn purge_crazyflie_queues(link: &crazyflie_link::Connection) {
     // Purge crazyflie queues
     loop {
-        if let None = link.recv_packet_timeout(Duration::from_millis(100)).unwrap() {
+        if timeout(std::time::Duration::from_millis(10), link.recv_packet()).await.is_err() {
             break;
         }
     }
 }
 
-fn main() -> anyhow::Result<()> {
+#[async_std::main]
+async fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
-    let link_context = LinkContext::new();
-    let link = link_context.open_link(&opt.link_uri)?;
+    let link_context = LinkContext::new(Arc::new(async_executors::AsyncStd));
+    let link = link_context.open_link(&opt.link_uri).await?;
 
     println!("Test ping:");
-    purge_crazyflie_queues(&link);
+    purge_crazyflie_queues(&link).await;
     let mut ping_times = Vec::new();
     for i in 0..opt.n_packets {
         let mut packet = Packet::new(0xF, 0, vec![i as u8]);
-        let ping_time = bench(|| {
-            link.send_packet(packet)?;
+        let ping_time = bench(async {
+            link.send_packet(packet).await?;
             loop {
-                packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?.unwrap();
+                packet = timeout(std::time::Duration::from_secs(10), link.recv_packet()).await?.unwrap();
                 if packet.get_header() == 0xf0 {
                     break;
                 }
@@ -64,7 +68,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             Ok(())
-        })?;
+        }).await?;
 
         ping_times.push(ping_time);
     }
@@ -82,18 +86,18 @@ fn main() -> anyhow::Result<()> {
     );
 
     println!("Test bandwidth:");
-    purge_crazyflie_queues(&link);
+    purge_crazyflie_queues(&link).await;
 
-    let runtime = bench(|| {
+    let runtime = bench(async {
         for i in (0..opt.n_packets).into_iter() {
             let packet = Packet::new(0xF, 0, vec![i as u8]);
-            link.send_packet(packet)?;
+            link.send_packet(packet).await?;
         }
         for i in (0..opt.n_packets).into_iter() {
             let mut packet;
 
             loop {
-                packet = link.recv_packet_timeout(std::time::Duration::from_secs(10))?.unwrap();
+                packet = timeout(std::time::Duration::from_secs(10), link.recv_packet()).await?.unwrap();
                 if packet.get_header() == 0xf0 {
                     break;
                 }
@@ -110,7 +114,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         Ok(())
-    })?;
+    }).await?;
 
     let packet_rate = (opt.n_packets as f64) / runtime.as_secs_f64();
     let bandwidth = packet_rate * (opt.size_packet as f64);

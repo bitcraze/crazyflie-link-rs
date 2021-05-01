@@ -6,6 +6,11 @@ It allows to scan for Crazyflies and to open a safe bidirectional radio connecti
 
 Look at and run the [examples](crazyflie-link/examples) to understand the current state of the link. Implementeation is still in progress.
 
+The link is implemented in Rust Async functions, this means that an async executor neeeds to be used.
+`async-std` is used in the examples and by the python binding.
+`async_executors` is used to make the lib independent of specific executors,
+any executors handles by `async_executors` is supported, this includes `tokio` and `wasm_bindgen_futures`.
+
 ## Working with the python binding
 
 The python binding uses PyO3 and Maturin. You can test it in a venv:
