@@ -37,7 +37,7 @@ pub struct Connection {
 
 impl Connection {
     pub async fn new(
-        executor: Arc<dyn SpawnHandle<()>>,
+        executor: Arc<dyn SpawnHandle<()> + Sync + Send>,
         radio: Arc<SharedCrazyradio>,
         channel: Channel,
         address: [u8; 5],
