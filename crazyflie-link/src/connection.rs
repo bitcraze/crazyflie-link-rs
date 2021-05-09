@@ -1,17 +1,15 @@
 // Connection handling code
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::Packet;
 use crazyradio::{SharedCrazyradio, Channel};
 use log::{debug, info, warn};
 use std::sync::{Arc, Weak};
 use std::time;
-use std::time::Duration;
 use async_executors::{SpawnHandle, JoinHandle, SpawnHandleExt};
 use futures_util::lock::Mutex;
 use futures::channel::oneshot;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
-const RELAX_DELAY: Duration = Duration::from_millis(0);
 
 bitflags! {
     pub struct ConnectionFlags: u32 {
@@ -20,10 +18,14 @@ bitflags! {
     }
 }
 
+/// Describe the current link connection status
 #[derive(Clone, Debug)]
 pub enum ConnectionStatus {
+    /// The link is connecting (ie. Safelink not enabled yet)
     Connecting,
+    /// The link is connected and active (Safelink enabled and no timeout)
     Connected,
+    /// The link is disconnected, the string contains the human-readable reason
     Disconnected(String),
 }
 
@@ -36,7 +38,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub async fn new(
+    pub(crate) async fn new(
         executor: Arc<dyn SpawnHandle<()> + Sync + Send>,
         radio: Arc<SharedCrazyradio>,
         channel: Channel,
@@ -47,8 +49,8 @@ impl Connection {
 
         let disconnect_canary = Arc::new(());
 
-        let (uplink_send, uplink_recv) = flume::unbounded();
-        let (downlink_send, downlink_recv) = flume::unbounded();
+        let (uplink_send, uplink_recv) = flume::bounded(1000);
+        let (downlink_send, downlink_recv) = flume::bounded(1000);
 
         let (connection_initialized_send, connection_initialized) = oneshot::channel();
 
@@ -83,20 +85,35 @@ impl Connection {
         })
     }
 
+    /// Close the connection and wait for the connection task to stop.
+    ///
+    /// The connection can also be closed by simply dropping the connection object.
+    /// Though, if the connection task is currently processing a packet, it will continue running
+    /// until the current packet has been processed. This function will wait for any ongoing packet
+    /// to be processed and for the communication task to stop.
     pub async fn close(self) {
         drop(self.disconnect_canary);
         self.thread_handle.await;
     }
 
+    /// Return the connection status
     pub async fn status(&self) -> ConnectionStatus {
         self.status.lock().await.clone()
     }
 
+    /// Send a packet to the connected Crazyflie
+    ///
+    /// This fundtion can return an error if the connection task is not active anymore.
+    /// This can happen if the Crazyflie is disconnected due to a timeout
     pub async fn send_packet(&self, packet: Packet) -> Result<()> {
         self.uplink.send_async(packet.into()).await?;
         Ok(())
     }
 
+    /// Receive a packet from the connected Crazyflie
+    ///
+    /// This fundtion can return an error if the connection task is not active anymore.
+    /// This can happen if the Crazyflie is disconnected due to a timeout
     pub async fn recv_packet(&self) -> Result<Packet> {
         let packet = self.downlink.recv_async().await?;
         Ok(packet.into())
@@ -165,12 +182,12 @@ impl ConnectionThread {
         Ok(false)
     }
 
-    fn send_packet_safe(&mut self, packet: Vec<u8>) -> Result<(crazyradio::Ack, Vec<u8>)> {
+    async fn send_packet_safe(&mut self, packet: Vec<u8>) -> Result<(crazyradio::Ack, Vec<u8>)> {
         let mut packet = packet;
         packet[0] &= 0xF3;
         packet[0] |= (self.safelink_up_ctr << 3) | (self.safelink_down_ctr << 2);
 
-        let (ack, mut ack_payload) = self.radio.send_packet(self.channel, self.address, packet)?;
+        let (ack, mut ack_payload) = self.radio.send_packet_async(self.channel, self.address, packet).await?;
 
         if ack.received {
             self.safelink_up_ctr = 1 - self.safelink_up_ctr;
@@ -189,11 +206,11 @@ impl ConnectionThread {
         Ok((ack, ack_payload))
     }
 
-    fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crazyradio::Ack, Vec<u8>)> {
+    async fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crazyradio::Ack, Vec<u8>)> {
         let result = if safe {
-            self.send_packet_safe(packet)?
+            self.send_packet_safe(packet).await?
         } else {
-            self.radio.send_packet(self.channel, self.address, packet)?
+            self.radio.send_packet_async(self.channel, self.address, packet).await?
         };
 
         Ok(result)
@@ -248,22 +265,19 @@ impl ConnectionThread {
 
         // Communication loop ...
         let mut last_pk_time = time::Instant::now();
-        let mut relax_timeout = RELAX_DELAY;
         let mut n_empty_packets = 0;
         let mut packet = vec![0xff];
         let mut needs_resend = false;
         while last_pk_time.elapsed() < time::Duration::from_millis(1000) {
             if !needs_resend {
-                packet = match self.uplink.recv_timeout(relax_timeout) {
-                    Ok(pk) => pk,
-                    Err(flume::RecvTimeoutError::Timeout) => vec![0xff], // Null packet
-                    Err(flume::RecvTimeoutError::Disconnected) => {
-                        return Err(Error::ChannelRecvError(flume::RecvError::Disconnected))
-                    }
+                packet = if self.uplink.is_empty() {
+                    vec![0xff]
+                } else {
+                    self.uplink.recv_async().await?
                 }
             }
 
-            let (ack, mut ack_payload) = self.send_packet(packet.clone(), safelink)?;
+            let (ack, mut ack_payload) = self.send_packet(packet.clone(), safelink).await?;
 
             if ack.received {
                 last_pk_time = time::Instant::now();
@@ -275,12 +289,9 @@ impl ConnectionThread {
                 let should_handle = self.preprocess_ack(&mut ack_payload, safelink);
                 if should_handle {
                     self.downlink.send(ack_payload)?;
-                    relax_timeout = Duration::from_nanos(0);
                 } else if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
                     // If no packet received for a while, relax packet pulling
-                    relax_timeout = RELAX_DELAY;
                 } else {
-                    relax_timeout = Duration::from_nanos(0);
                     n_empty_packets += 1;
                 }
             } else {

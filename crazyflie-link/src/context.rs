@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use crate::Connection;
-use crate::ConnectionFlags;
+use crate::connection::ConnectionFlags;
 use crazyradio::SharedCrazyradio;
 use crazyradio::Channel;
 use std::collections::BTreeMap;
