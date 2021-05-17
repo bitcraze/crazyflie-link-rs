@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[derive(Debug, Clone)]
 pub struct Packet {
     header: u8,
     port: u8,
