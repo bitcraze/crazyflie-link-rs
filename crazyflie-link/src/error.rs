@@ -10,15 +10,15 @@ pub enum Error {
     #[error("Timeout")]
     Timeout,
     #[error("Crazyradio error: {0:?}")]
-    CrazyradioError(crazyradio::Error),
+    CrazyradioError(crate::crazyradio::Error),
     #[error("Threading error: {0:?}")]
     ChannelRecvError(flume::RecvError),
     #[error("Threading error: {0:?}")]
     ChannelSendError(flume::SendError<Vec<u8>>),
 }
 
-impl From<crazyradio::Error> for Error {
-    fn from(error: crazyradio::Error) -> Self {
+impl From<crate::crazyradio::Error> for Error {
+    fn from(error: crate::crazyradio::Error) -> Self {
         Error::CrazyradioError(error)
     }
 }

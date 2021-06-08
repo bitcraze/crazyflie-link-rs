@@ -6,7 +6,8 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.0"
-crazyradio = { version = "0.1.6", features = ["shared_radio"] }
+crazyradio = { git="https://github.com/ataffanel/crazyradio-rs", rev="0f5cc3e", features = ["shared_radio", "async"], optional = true }
+crazyradio-webusb = { path = "../../crazyradio-webusb", optional = true }
 flume = "0.10"
 log = "0.4"
 rand = "0.8"
@@ -22,3 +23,8 @@ anyhow = "1"
 byteorder = "1.2.2"
 structopt = "0.3"
 "async-std" = { version = "1.9", features = ["attributes"] }
+
+[features]
+default = ["native"]
+native = ["crazyradio"]
+webusb = ["crazyradio-webusb"]

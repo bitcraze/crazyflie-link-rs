@@ -1,7 +1,7 @@
 // Connection handling code
 use crate::error::Result;
 use crate::Packet;
-use crazyradio::{SharedCrazyradio, Channel};
+use crate::crazyradio::{SharedCrazyradio, Channel};
 use log::{debug, info, warn};
 use std::sync::{Arc, Weak};
 use std::time;
@@ -182,7 +182,7 @@ impl ConnectionThread {
         Ok(false)
     }
 
-    async fn send_packet_safe(&mut self, packet: Vec<u8>) -> Result<(crazyradio::Ack, Vec<u8>)> {
+    async fn send_packet_safe(&mut self, packet: Vec<u8>) -> Result<(crate::crazyradio::Ack, Vec<u8>)> {
         let mut packet = packet;
         packet[0] &= 0xF3;
         packet[0] |= (self.safelink_up_ctr << 3) | (self.safelink_down_ctr << 2);
@@ -206,7 +206,7 @@ impl ConnectionThread {
         Ok((ack, ack_payload))
     }
 
-    async fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crazyradio::Ack, Vec<u8>)> {
+    async fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crate::crazyradio::Ack, Vec<u8>)> {
         let result = if safe {
             self.send_packet_safe(packet).await?
         } else {

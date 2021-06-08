@@ -1,8 +1,8 @@
 use crate::error::{Error, Result};
 use crate::Connection;
 use crate::connection::ConnectionFlags;
-use crazyradio::SharedCrazyradio;
-use crazyradio::Channel;
+use crate::crazyradio::SharedCrazyradio;
+use crate::crazyradio::Channel;
 use std::collections::BTreeMap;
 use hex::FromHex;
 use std::sync::{Arc, Weak};
@@ -30,7 +30,7 @@ impl LinkContext {
         let radio = match Weak::upgrade(&radios[&radio_nth]) {
             Some(radio) => radio,
             None => {
-                let new_radio = crazyradio::Crazyradio::open_nth(radio_nth)?;
+                let new_radio = crate::crazyradio::Crazyradio::open_nth_async(radio_nth).await?;
                 let new_radio = Arc::new(SharedCrazyradio::new(new_radio));
                 radios.insert(radio_nth, Arc::downgrade(&new_radio));
 
