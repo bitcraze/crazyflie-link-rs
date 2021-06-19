@@ -7,7 +7,7 @@ use std::sync::{Arc, Weak};
 use std::time;
 use async_executors::{SpawnHandle, JoinHandle, SpawnHandleExt};
 use futures_util::lock::Mutex;
-use futures::channel::oneshot;
+use futures_channel::oneshot;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use hex::FromHex;
 use std::sync::{Arc, Weak};
 use url::Url;
-use futures::lock::Mutex;
+use futures_util::lock::Mutex;
 
 pub struct LinkContext {
     radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
