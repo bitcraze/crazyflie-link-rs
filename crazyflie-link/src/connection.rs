@@ -2,12 +2,19 @@
 use crate::error::Result;
 use crate::Packet;
 use crate::crazyradio::{SharedCrazyradio, Channel};
+use async_executors::LocalSpawnHandleExt;
 use log::{debug, info, warn};
 use std::sync::{Arc, Weak};
-use std::time;
-use async_executors::{SpawnHandle, JoinHandle, SpawnHandleExt};
+use async_executors::{LocalSpawnHandle, JoinHandle};
 use futures_util::lock::Mutex;
 use futures_channel::oneshot;
+
+use std::time;
+
+#[cfg(feature = "native")]
+use std::time::Instant;
+#[cfg(feature = "webusb")]
+use wasm_timer::Instant;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 
@@ -39,7 +46,7 @@ pub struct Connection {
 
 impl Connection {
     pub(crate) async fn new(
-        executor: Arc<dyn SpawnHandle<()> + Sync + Send>,
+        executor: Arc<dyn LocalSpawnHandle<()> + Sync + Send>,
         radio: Arc<SharedCrazyradio>,
         channel: Channel,
         address: [u8; 5],
@@ -64,7 +71,7 @@ impl Connection {
             address,
             flags,
         );
-        let thread_handle = executor.spawn_handle (async move {
+        let thread_handle = executor.spawn_handle_local (async move {
             if let Err(e) = thread.run(connection_initialized_send).await {
                 thread.update_status(ConnectionStatus::Disconnected(format!(
                     "Connection error: {}",
@@ -264,7 +271,7 @@ impl ConnectionThread {
         connection_initialized.send(()).unwrap();
 
         // Communication loop ...
-        let mut last_pk_time = time::Instant::now();
+        let mut last_pk_time = Instant::now();
         let mut n_empty_packets = 0;
         let mut packet = vec![0xff];
         let mut needs_resend = false;
@@ -279,8 +286,10 @@ impl ConnectionThread {
 
             let (ack, mut ack_payload) = self.send_packet(packet.clone(), safelink).await?;
 
+            debug!("Packet sent!");
+
             if ack.received {
-                last_pk_time = time::Instant::now();
+                last_pk_time = Instant::now();
                 needs_resend = false;
 
                 // Add some relaxation time if the Crazyflie has nothing to send back
@@ -301,6 +310,7 @@ impl ConnectionThread {
 
             // If the connection object has been dropped, leave the thread
             if Weak::upgrade(&self.disconnect_canary).is_none() {
+                debug!("Canary dead, leaving connection loop.");
                 return Ok(());
             }
         }

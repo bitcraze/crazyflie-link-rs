@@ -11,11 +11,11 @@ use futures_util::lock::Mutex;
 
 pub struct LinkContext {
     radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
-    executor: Arc<dyn async_executors::SpawnHandle<()> + Send + Sync>,
+    executor: Arc<dyn async_executors::LocalSpawnHandle<()> + Send + Sync>,
 }
 
 impl LinkContext {
-    pub fn new(executor: Arc<dyn async_executors::SpawnHandle<()> + Send + Sync>) -> Self {
+    pub fn new(executor: Arc<dyn async_executors::LocalSpawnHandle<()> + Send + Sync>) -> Self {
         Self {
             radios: Mutex::new(BTreeMap::new()),
             executor,

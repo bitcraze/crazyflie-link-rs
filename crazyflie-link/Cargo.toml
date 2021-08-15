@@ -8,6 +8,7 @@ edition = "2018"
 bitflags = "1.0"
 crazyradio = { git="https://github.com/ataffanel/crazyradio-rs", rev="9a3892f", features = ["shared_radio", "async"], optional = true }
 crazyradio-webusb = { git="https://github.com/ataffanel/crazyradio-webusb-rs", rev="acc0ce1", optional = true }
+wasm-timer = { version="0.2.5", optional = true }
 flume = "0.10"
 log = "0.4"
 rand = "0.8"
@@ -28,4 +29,4 @@ structopt = "0.3"
 [features]
 default = ["native"]
 native = ["crazyradio"]
-webusb = ["crazyradio-webusb"]
+webusb = ["crazyradio-webusb", "wasm-timer"]
