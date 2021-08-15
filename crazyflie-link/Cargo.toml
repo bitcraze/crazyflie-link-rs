@@ -15,7 +15,7 @@ rand = "0.8"
 thiserror = "1"
 url = "2.2"
 hex = "0.4.3"
-async_executors = { version = "0.4.1", features = ["async_std"] }
+async_executors = { version = "0.4.1" }
 futures = "0.3"
 futures-util = "0.3"
 futures-channel = "0.3"
@@ -25,6 +25,7 @@ anyhow = "1"
 byteorder = "1.2.2"
 structopt = "0.3"
 "async-std" = { version = "1.9", features = ["attributes"] }
+async_executors = { version = "0.4.1", features = ["async_std"]}
 
 [features]
 default = ["native"]
