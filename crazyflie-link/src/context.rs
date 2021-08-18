@@ -1,13 +1,13 @@
+use crate::connection::ConnectionFlags;
+use crate::crazyradio::Channel;
+use crate::crazyradio::SharedCrazyradio;
 use crate::error::{Error, Result};
 use crate::Connection;
-use crate::connection::ConnectionFlags;
-use crate::crazyradio::SharedCrazyradio;
-use crate::crazyradio::Channel;
-use std::collections::BTreeMap;
+use futures_util::lock::Mutex;
 use hex::FromHex;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
 use url::Url;
-use futures_util::lock::Mutex;
 
 pub struct LinkContext {
     radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
@@ -25,7 +25,7 @@ impl LinkContext {
     async fn get_radio(&self, radio_nth: usize) -> Result<Arc<SharedCrazyradio>> {
         let mut radios = self.radios.lock().await;
 
-        radios.entry(radio_nth).or_insert(Weak::new());
+        radios.entry(radio_nth).or_insert_with(Weak::new);
 
         let radio = match Weak::upgrade(&radios[&radio_nth]) {
             Some(radio) => radio,
@@ -87,12 +87,16 @@ impl LinkContext {
     }
 
     pub async fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
-        let channels = self.get_radio(0).await?.scan_async(
-            Channel::from_number(0)?,
-            Channel::from_number(125)?,
-            address,
-            vec![0xff],
-        ).await?;
+        let channels = self
+            .get_radio(0)
+            .await?
+            .scan_async(
+                Channel::from_number(0)?,
+                Channel::from_number(125)?,
+                address,
+                vec![0xff],
+            )
+            .await?;
 
         let mut found = Vec::new();
 
@@ -110,12 +114,11 @@ impl LinkContext {
         for uri in uris {
             let (radio_nth, channel, address, _) = self.parse_uri(uri)?;
             let radio = self.get_radio(radio_nth).await?;
-            let (ack, _) = radio.send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF]).await?;
+            let (ack, _) = radio
+                .send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF])
+                .await?;
             if ack.received {
-                found.push(format!(
-                    "{}{}",
-                    uri, "?safelink=0&ackfilter=0"
-                ));
+                found.push(format!("{}{}", uri, "?safelink=0&ackfilter=0"));
             }
         }
         Ok(found)

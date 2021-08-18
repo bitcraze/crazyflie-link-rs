@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
+use async_std::future::timeout;
 use byteorder::{ByteOrder, LittleEndian};
 use crazyflie_link::{Connection, LinkContext, Packet};
+use std::sync::Arc;
 use std::time::Duration;
 use structopt::StructOpt;
-use async_std::future::timeout;
-use std::sync::Arc;
 
 const TARGET_STM32: u8 = 0xFF;
 const TARGET_NRF51: u8 = 0xFE;
@@ -32,10 +32,12 @@ struct BootloaderInfo {
 
 async fn scan_for_bootloader() -> Result<String> {
     let context = crate::LinkContext::new(Arc::new(async_executors::AsyncStd));
-    let res = context.scan_selected(vec![
-        "radio://0/110/2M/E7E7E7E7E7",
-        "radio://0/0/2M/E7E7E7E7E7",
-    ]).await?;
+    let res = context
+        .scan_selected(vec![
+            "radio://0/110/2M/E7E7E7E7E7",
+            "radio://0/0/2M/E7E7E7E7E7",
+        ])
+        .await?;
 
     if res.is_empty() {
         Ok(String::from(""))
@@ -49,7 +51,9 @@ async fn get_info(link: &Connection, target: u8) -> Result<BootloaderInfo> {
         let packet: Packet = vec![0xFF, target, 0x10].into();
 
         link.send_packet(packet).await?;
-        let packet = timeout(Duration::from_millis(100), link.recv_packet()).await?.unwrap();
+        let packet = timeout(Duration::from_millis(100), link.recv_packet())
+            .await?
+            .unwrap();
         let data = packet.get_data();
 
         if packet.get_header() == 0xFF && data.len() >= 2 && data[0..2] == [target, 0x10] {
@@ -74,11 +78,14 @@ async fn reset_to_bootloader(link: &Connection) -> Result<String> {
 
     let mut new_address = Vec::new();
     loop {
-        let packet = timeout(Duration::from_millis(100), link.recv_packet()).await?.unwrap();
+        let packet = timeout(Duration::from_millis(100), link.recv_packet())
+            .await?
+            .unwrap();
         let data = packet.get_data();
         if data.len() > 2 && data[0..2] == [TARGET_NRF51, 0xFF] {
             new_address.push(0xb1);
-            for byte in data[2..6].iter().rev() { // handle little-endian order
+            for byte in data[2..6].iter().rev() {
+                // handle little-endian order
                 new_address.push(*byte);
             }
             break;

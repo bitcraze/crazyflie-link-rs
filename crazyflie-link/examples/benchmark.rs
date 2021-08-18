@@ -1,13 +1,13 @@
 // Simple benchmark test, test ping time and duplex bandwidth
+use async_std::future::timeout;
 use crazyflie_link::{LinkContext, Packet};
 use futures::Future;
+use std::sync::Arc;
 use std::{
     ops::Div,
     time::{Duration, Instant},
 };
 use structopt::StructOpt;
-use std::sync::Arc;
-use async_std::future::timeout;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bandwidth")]
@@ -31,7 +31,10 @@ async fn bench<F: Future<Output = anyhow::Result<()>>>(function: F) -> anyhow::R
 async fn purge_crazyflie_queues(link: &crazyflie_link::Connection) {
     // Purge crazyflie queues
     loop {
-        if timeout(std::time::Duration::from_millis(10), link.recv_packet()).await.is_err() {
+        if timeout(std::time::Duration::from_millis(10), link.recv_packet())
+            .await
+            .is_err()
+        {
             break;
         }
     }
@@ -52,7 +55,9 @@ async fn main() -> anyhow::Result<()> {
         let ping_time = bench(async {
             link.send_packet(packet).await?;
             loop {
-                packet = timeout(std::time::Duration::from_secs(10), link.recv_packet()).await?.unwrap();
+                packet = timeout(std::time::Duration::from_secs(10), link.recv_packet())
+                    .await?
+                    .unwrap();
                 if packet.get_header() == 0xf0 {
                     break;
                 }
@@ -68,7 +73,8 @@ async fn main() -> anyhow::Result<()> {
             }
 
             Ok(())
-        }).await?;
+        })
+        .await?;
 
         ping_times.push(ping_time);
     }
@@ -97,7 +103,9 @@ async fn main() -> anyhow::Result<()> {
             let mut packet;
 
             loop {
-                packet = timeout(std::time::Duration::from_secs(10), link.recv_packet()).await?.unwrap();
+                packet = timeout(std::time::Duration::from_secs(10), link.recv_packet())
+                    .await?
+                    .unwrap();
                 if packet.get_header() == 0xf0 {
                     break;
                 }
@@ -114,7 +122,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Ok(())
-    }).await?;
+    })
+    .await?;
 
     let packet_rate = (opt.n_packets as f64) / runtime.as_secs_f64();
     let bandwidth = packet_rate * (opt.size_packet as f64);

@@ -1,13 +1,13 @@
 // Connection handling code
+use crate::crazyradio::{Channel, SharedCrazyradio};
 use crate::error::Result;
 use crate::Packet;
-use crate::crazyradio::{SharedCrazyradio, Channel};
 use async_executors::LocalSpawnHandleExt;
+use async_executors::{JoinHandle, LocalSpawnHandle};
+use futures_channel::oneshot;
+use futures_util::lock::Mutex;
 use log::{debug, info, warn};
 use std::sync::{Arc, Weak};
-use async_executors::{LocalSpawnHandle, JoinHandle};
-use futures_util::lock::Mutex;
-use futures_channel::oneshot;
 
 use std::time;
 
@@ -61,24 +61,30 @@ impl Connection {
 
         let (connection_initialized_send, connection_initialized) = oneshot::channel();
 
-        let mut thread = ConnectionThread::new(
+        let mut thread = ConnectionThread {
             radio,
-            status.clone(),
-            Arc::downgrade(&disconnect_canary),
-            uplink_recv,
-            downlink_send,
+            status: status.clone(),
+            disconnect_canary: Arc::downgrade(&disconnect_canary),
+            safelink_down_ctr: 0,
+            safelink_up_ctr: 0,
+            uplink: uplink_recv,
+            downlink: downlink_send,
             channel,
             address,
             flags,
-        );
-        let thread_handle = executor.spawn_handle_local (async move {
-            if let Err(e) = thread.run(connection_initialized_send).await {
-                thread.update_status(ConnectionStatus::Disconnected(format!(
-                    "Connection error: {}",
-                    e
-                ))).await;
-            }
-        }).expect("Spawning connection task");
+        };
+        let thread_handle = executor
+            .spawn_handle_local(async move {
+                if let Err(e) = thread.run(connection_initialized_send).await {
+                    thread
+                        .update_status(ConnectionStatus::Disconnected(format!(
+                            "Connection error: {}",
+                            e
+                        )))
+                        .await;
+                }
+            })
+            .expect("Spawning connection task");
 
         // Wait for, either, the connection being established or failed initialization
         connection_initialized.await.unwrap();
@@ -141,30 +147,6 @@ struct ConnectionThread {
 }
 
 impl ConnectionThread {
-    fn new(
-        radio: Arc<SharedCrazyradio>,
-        status: Arc<Mutex<ConnectionStatus>>,
-        disconnect_canary: Weak<()>,
-        uplink: flume::Receiver<Vec<u8>>,
-        downlink: flume::Sender<Vec<u8>>,
-        channel: Channel,
-        address: [u8; 5],
-        flags: ConnectionFlags,
-    ) -> Self {
-        ConnectionThread {
-            radio,
-            status,
-            disconnect_canary,
-            safelink_up_ctr: 0,
-            safelink_down_ctr: 0,
-            uplink,
-            downlink,
-            channel,
-            address,
-            flags,
-        }
-    }
-
     async fn update_status(&self, new_status: ConnectionStatus) {
         debug!("New status: {:?}", &new_status);
         let mut status = self.status.lock().await;
@@ -174,9 +156,10 @@ impl ConnectionThread {
     async fn enable_safelink(&mut self) -> Result<bool> {
         // Tying 10 times to reset safelink
         for _ in 0..10 {
-            let (ack, payload) =
-                self.radio
-                    .send_packet_async(self.channel, self.address, vec![0xff, 0x05, 0x01]).await?;
+            let (ack, payload) = self
+                .radio
+                .send_packet_async(self.channel, self.address, vec![0xff, 0x05, 0x01])
+                .await?;
 
             if ack.received && payload == [0xff, 0x05, 0x01] {
                 self.safelink_down_ctr = 0;
@@ -189,12 +172,18 @@ impl ConnectionThread {
         Ok(false)
     }
 
-    async fn send_packet_safe(&mut self, packet: Vec<u8>) -> Result<(crate::crazyradio::Ack, Vec<u8>)> {
+    async fn send_packet_safe(
+        &mut self,
+        packet: Vec<u8>,
+    ) -> Result<(crate::crazyradio::Ack, Vec<u8>)> {
         let mut packet = packet;
         packet[0] &= 0xF3;
         packet[0] |= (self.safelink_up_ctr << 3) | (self.safelink_down_ctr << 2);
 
-        let (ack, mut ack_payload) = self.radio.send_packet_async(self.channel, self.address, packet).await?;
+        let (ack, mut ack_payload) = self
+            .radio
+            .send_packet_async(self.channel, self.address, packet)
+            .await?;
 
         if ack.received {
             self.safelink_up_ctr = 1 - self.safelink_up_ctr;
@@ -213,11 +202,17 @@ impl ConnectionThread {
         Ok((ack, ack_payload))
     }
 
-    async fn send_packet(&mut self, packet: Vec<u8>, safe: bool) -> Result<(crate::crazyradio::Ack, Vec<u8>)> {
+    async fn send_packet(
+        &mut self,
+        packet: Vec<u8>,
+        safe: bool,
+    ) -> Result<(crate::crazyradio::Ack, Vec<u8>)> {
         let result = if safe {
             self.send_packet_safe(packet).await?
         } else {
-            self.radio.send_packet_async(self.channel, self.address, packet).await?
+            self.radio
+                .send_packet_async(self.channel, self.address, packet)
+                .await?
         };
 
         Ok(result)
@@ -317,7 +312,8 @@ impl ConnectionThread {
 
         self.update_status(ConnectionStatus::Disconnected(
             "Connection timeout".to_string(),
-        )).await;
+        ))
+        .await;
 
         warn!(
             "Connection to {:?}/{:X?} lost (timeout)",

@@ -1,7 +1,7 @@
+use async_std::future;
+use async_std::task;
 use pyo3::{exceptions::PyIOError, prelude::*};
 use std::{sync::RwLock, time::Duration};
-use async_std::task;
-use async_std::future;
 
 #[pyclass]
 struct LinkContext {
@@ -12,7 +12,8 @@ struct LinkContext {
 impl LinkContext {
     #[new]
     fn new() -> Self {
-        let context = crazyflie_link::LinkContext::new(std::sync::Arc::new(async_executors::AsyncStd));
+        let context =
+            crazyflie_link::LinkContext::new(std::sync::Arc::new(async_executors::AsyncStd));
 
         LinkContext { context }
     }
@@ -21,7 +22,8 @@ impl LinkContext {
     fn scan(&self, address: [u8; 5]) -> PyResult<Vec<String>> {
         task::block_on(async {
             self.context
-                .scan(address).await
+                .scan(address)
+                .await
                 .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
         })
     }
@@ -29,16 +31,17 @@ impl LinkContext {
     fn scan_selected(&self, uris: Vec<&str>) -> PyResult<Vec<String>> {
         task::block_on(async {
             self.context
-                .scan_selected(uris).await
+                .scan_selected(uris)
+                .await
                 .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
         })
     }
 
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
         let connection = task::block_on(async {
-            self
-                .context
-                .open_link(uri).await
+            self.context
+                .open_link(uri)
+                .await
                 .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
         })?;
 
@@ -62,7 +65,8 @@ impl Connection {
             if let Some(connection) = connection.as_ref() {
                 task::block_on(async {
                     connection
-                        .send_packet(crazyflie_link::Packet::from(packet)).await
+                        .send_packet(crazyflie_link::Packet::from(packet))
+                        .await
                         .map_err(|e| PyErr::new::<PyIOError, _>(format!("Error: {:?}", e)))
                 })
             } else {
@@ -73,36 +77,33 @@ impl Connection {
 
     #[args(timeout = "100")]
     fn receive_packet(&self, py: Python, timeout: u64) -> PyResult<Option<Vec<u8>>> {
-            py.allow_threads(|| {
-                let connection = self.connection.read().unwrap();
+        py.allow_threads(|| {
+            let connection = self.connection.read().unwrap();
 
-                if let Some(connection) = connection.as_ref() {
-                    let timeout = Duration::from_millis(timeout);
-                    let pk = task::block_on(async {
-                        match future::timeout(timeout, connection.recv_packet()).await {
-                            Ok(packet) => {
-                                if let Ok(packet) = packet {
-                                    Ok(packet.into())
-                                } else {
-                                    Err(PyIOError::new_err("Link closed"))
-                                }
-                                
+            if let Some(connection) = connection.as_ref() {
+                let timeout = Duration::from_millis(timeout);
+                let pk = task::block_on(async {
+                    match future::timeout(timeout, connection.recv_packet()).await {
+                        Ok(packet) => {
+                            if let Ok(packet) = packet {
+                                Ok(packet.into())
+                            } else {
+                                Err(PyIOError::new_err("Link closed"))
                             }
-                            Err(_) => Ok(None)
                         }
-                    });
-                    return pk.map(|p| p.map(|p| p.into()));
-                } else {
-                    return Err(PyIOError::new_err("Link closed"));
-                }
-            })
+                        Err(_) => Ok(None),
+                    }
+                });
+                pk.map(|p| p.map(|p| p.into()))
+            } else {
+                Err(PyIOError::new_err("Link closed"))
+            }
+        })
     }
 
     fn close(&self) {
         if let Some(connection) = self.connection.write().unwrap().take() {
-            task::block_on(async {
-                connection.close().await
-            })
+            task::block_on(async { connection.close().await })
         }
     }
 }

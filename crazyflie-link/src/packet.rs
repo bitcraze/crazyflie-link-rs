@@ -46,9 +46,7 @@ impl From<Vec<u8>> for Packet {
 
 impl From<Packet> for Vec<u8> {
     fn from(packet: Packet) -> Self {
-        let mut vec = Vec::new();
-
-        vec.push(packet.get_header());
+        let mut vec = vec![packet.get_header()];
         vec.append(&mut packet.get_data().to_vec());
         vec
     }
