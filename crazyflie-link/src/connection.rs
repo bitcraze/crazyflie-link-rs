@@ -105,6 +105,18 @@ impl Connection {
         })
     }
 
+    /// Wait for the connection to be closed. Returns the message stored in the
+    /// disconnected connection status that indicate the reason for the disconnection
+    pub async fn wait_close(&self) -> String {
+        // Wait for the connection thread to drop the disconnect channel
+        let _ = self.disconnect_channel.recv_async().await;
+        if let ConnectionStatus::Disconnected(reason) = self.status().await {
+            reason
+        } else {
+            "Still connected!".to_owned()
+        }
+    }
+
     /// Close the connection and wait for the connection task to stop.
     ///
     /// The connection can also be closed by simply dropping the connection object.
@@ -326,7 +338,8 @@ impl ConnectionThread {
 
             // If the connection object has been dropped, leave the thread
             if self.disconnect.load(Relaxed) {
-                debug!("Canary dead, leaving connection loop.");
+                debug!("Disconnect requested, leaving connection loop.");
+                self.update_status(ConnectionStatus::Disconnected("Connection closed".to_owned())).await;
                 return Ok(());
             }
         }
