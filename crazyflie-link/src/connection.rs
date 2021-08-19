@@ -2,12 +2,14 @@
 use crate::crazyradio::{Channel, SharedCrazyradio};
 use crate::error::Result;
 use crate::Packet;
-use async_executors::LocalSpawnHandleExt;
-use async_executors::{JoinHandle, LocalSpawnHandle};
+use async_executors::{JoinHandle, LocalSpawnHandleExt};
+use async_executors::LocalSpawnHandle;
 use futures_channel::oneshot;
 use futures_util::lock::Mutex;
 use log::{debug, info, warn};
-use std::sync::{Arc, Weak};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
 
 use std::time;
 
@@ -40,8 +42,9 @@ pub struct Connection {
     status: Arc<Mutex<ConnectionStatus>>,
     uplink: flume::Sender<Vec<u8>>,
     downlink: flume::Receiver<Vec<u8>>,
-    disconnect_canary: Arc<()>,
-    thread_handle: JoinHandle<()>,
+    disconnect_channel: flume::Receiver<()>,
+    disconnect: Arc<AtomicBool>,
+    _thread_handle: JoinHandle<()>,
 }
 
 impl Connection {
@@ -54,7 +57,8 @@ impl Connection {
     ) -> Result<Connection> {
         let status = Arc::new(Mutex::new(ConnectionStatus::Connecting));
 
-        let disconnect_canary = Arc::new(());
+        let (disconnect_channel_tx, disconnect_channel_rx) = flume::bounded(0);
+        let disconnect = Arc::new(AtomicBool::new(false));
 
         let (uplink_send, uplink_recv) = flume::bounded(1000);
         let (downlink_send, downlink_recv) = flume::bounded(1000);
@@ -64,7 +68,7 @@ impl Connection {
         let mut thread = ConnectionThread {
             radio,
             status: status.clone(),
-            disconnect_canary: Arc::downgrade(&disconnect_canary),
+            disconnect_channel: disconnect_channel_tx,
             safelink_down_ctr: 0,
             safelink_up_ctr: 0,
             uplink: uplink_recv,
@@ -72,6 +76,7 @@ impl Connection {
             channel,
             address,
             flags,
+            disconnect: disconnect.clone(),
         };
         let thread_handle = executor
             .spawn_handle_local(async move {
@@ -83,6 +88,7 @@ impl Connection {
                         )))
                         .await;
                 }
+                drop(thread.disconnect_channel);
             })
             .expect("Spawning connection task");
 
@@ -91,10 +97,11 @@ impl Connection {
 
         Ok(Connection {
             status,
-            disconnect_canary,
+            disconnect_channel: disconnect_channel_rx,
             uplink: uplink_send,
             downlink: downlink_recv,
-            thread_handle,
+            disconnect,
+            _thread_handle: thread_handle,
         })
     }
 
@@ -104,14 +111,21 @@ impl Connection {
     /// Though, if the connection task is currently processing a packet, it will continue running
     /// until the current packet has been processed. This function will wait for any ongoing packet
     /// to be processed and for the communication task to stop.
-    pub async fn close(self) {
-        drop(self.disconnect_canary);
-        self.thread_handle.await;
+    pub async fn close(&self) {
+        self.disconnect.store(true, Relaxed);
+        let _ = self.disconnect_channel.recv_async().await;
     }
 
     /// Return the connection status
     pub async fn status(&self) -> ConnectionStatus {
         self.status.lock().await.clone()
+    }
+
+    /// Block until the connection is dropped. The `status()` function can be used to get the reason
+    /// for the disconnection.
+    pub async fn wait_disconnect(&self) {
+        // The channel will return an error when the other side, in the connection thread, is dropped
+        let _ = self.disconnect_channel.recv_async().await;
     }
 
     /// Send a packet to the connected Crazyflie
@@ -133,10 +147,16 @@ impl Connection {
     }
 }
 
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.disconnect.store(true, Relaxed);
+    }
+}
+
 struct ConnectionThread {
     radio: Arc<SharedCrazyradio>,
     status: Arc<Mutex<ConnectionStatus>>,
-    disconnect_canary: Weak<()>,
+    disconnect_channel: flume::Sender<()>,
     safelink_up_ctr: u8,
     safelink_down_ctr: u8,
     uplink: flume::Receiver<Vec<u8>>,
@@ -144,6 +164,7 @@ struct ConnectionThread {
     channel: Channel,
     address: [u8; 5],
     flags: ConnectionFlags,
+    disconnect: Arc<AtomicBool>,
 }
 
 impl ConnectionThread {
@@ -304,7 +325,7 @@ impl ConnectionThread {
             }
 
             // If the connection object has been dropped, leave the thread
-            if Weak::upgrade(&self.disconnect_canary).is_none() {
+            if self.disconnect.load(Relaxed) {
                 debug!("Canary dead, leaving connection loop.");
                 return Ok(());
             }

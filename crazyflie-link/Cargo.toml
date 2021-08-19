@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.0"
-crazyradio = { git="https://github.com/ataffanel/crazyradio-rs", rev="9a3892f", features = ["shared_radio", "async"], optional = true }
+crazyradio = { git="https://github.com/ataffanel/crazyradio-rs", rev="aaf33d9", features = ["shared_radio", "async"], optional = true }
 crazyradio-webusb = { git="https://github.com/ataffanel/crazyradio-webusb-rs", rev="acc0ce1", optional = true }
 wasm-timer = { version="0.2.5", optional = true }
 flume = "0.10"
