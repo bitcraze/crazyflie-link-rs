@@ -3,11 +3,21 @@ name = "crazyflie-link"
 version = "0.2.0"
 authors = ["Arnaud Taffanel <arnaud@bitcraze.io>"]
 edition = "2018"
+description = "Crazyflie link"
+readme = "README.md"
+repository = "https://github.com/ataffanel/crazyflie-link-rs"
+license = "MIT OR Apache-2.0"
+keywords = ["nrf24", "crazyflie", "webusb", "wasm"]
+categories = ["hardware-support"]
+exclude = [
+    ".github/*"
+]
+
 
 [dependencies]
 bitflags = "1.0"
-crazyradio = { git="https://github.com/ataffanel/crazyradio-rs", rev="aaf33d9", features = ["shared_radio", "async"], optional = true }
-crazyradio-webusb = { git="https://github.com/ataffanel/crazyradio-webusb-rs", rev="acc0ce1", optional = true }
+crazyradio = { version="0.2", features = ["shared_radio", "async"], optional = true }
+crazyradio-webusb = { version="0.2", optional = true }
 wasm-timer = { version="0.2.5", optional = true }
 flume = "0.10"
 log = "0.4"

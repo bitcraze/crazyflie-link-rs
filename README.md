@@ -4,7 +4,7 @@ This repos contains an experimental implementation of the Crazyflie radio link i
 
 It allows to scan for Crazyflies and to open a safe bidirectional radio connection using a Crazyradio.
 
-Look at and run the [examples](crazyflie-link/examples) to understand the current state of the link. Implementeation is still in progress.
+Look at and run the [examples](crazyflie-link/examples) to understand the current state of the link. Implementation is still in progress.
 
 The link is implemented in Rust Async functions, this means that an async executor needs to be used.
 `async-std` is used in the examples and by the python binding.

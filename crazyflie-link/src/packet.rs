@@ -1,5 +1,6 @@
 use std::fmt;
 
+/// CRTP data packet
 #[derive(Debug, Clone)]
 pub struct Packet {
     header: u8,

@@ -2,8 +2,8 @@
 use crate::crazyradio::{Channel, SharedCrazyradio};
 use crate::error::Result;
 use crate::Packet;
-use async_executors::{JoinHandle, LocalSpawnHandleExt};
 use async_executors::LocalSpawnHandle;
+use async_executors::{JoinHandle, LocalSpawnHandleExt};
 use futures_channel::oneshot;
 use futures_util::lock::Mutex;
 use log::{debug, info, warn};
@@ -38,6 +38,7 @@ pub enum ConnectionStatus {
     Disconnected(String),
 }
 
+/// Link connection
 pub struct Connection {
     status: Arc<Mutex<ConnectionStatus>>,
     uplink: flume::Sender<Vec<u8>>,
@@ -339,7 +340,10 @@ impl ConnectionThread {
             // If the connection object has been dropped, leave the thread
             if self.disconnect.load(Relaxed) {
                 debug!("Disconnect requested, leaving connection loop.");
-                self.update_status(ConnectionStatus::Disconnected("Connection closed".to_owned())).await;
+                self.update_status(ConnectionStatus::Disconnected(
+                    "Connection closed".to_owned(),
+                ))
+                .await;
                 return Ok(());
             }
         }

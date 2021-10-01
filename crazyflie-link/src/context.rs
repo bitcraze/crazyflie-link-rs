@@ -1,3 +1,8 @@
+//! # Link Context
+//!
+//! The Link context keeps track of the radio dongles opened and used by connections.
+//! It also keeps track of the async executor
+
 use crate::connection::ConnectionFlags;
 use crate::crazyradio::Channel;
 use crate::crazyradio::SharedCrazyradio;
@@ -9,12 +14,14 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
 use url::Url;
 
+/// Context for the link connections
 pub struct LinkContext {
     radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
     executor: Arc<dyn async_executors::LocalSpawnHandle<()> + Send + Sync>,
 }
 
 impl LinkContext {
+    /// Create a new link context
     pub fn new(executor: Arc<dyn async_executors::LocalSpawnHandle<()> + Send + Sync>) -> Self {
         Self {
             radios: Mutex::new(BTreeMap::new()),
@@ -86,6 +93,13 @@ impl LinkContext {
         Ok((radio, channel, address, flags))
     }
 
+    /// Scan for Crazyflies at some given address
+    ///
+    /// This function will send a packet to every channels and look for an acknolegement in return.
+    ///
+    /// The address argument will set the radio packets address to scan for.
+    ///
+    /// It returns a list of URIs that can be passed to the [LinkContext::open_link()] function.
     pub async fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
         let channels = self
             .get_radio(0)
@@ -109,6 +123,11 @@ impl LinkContext {
         Ok(found)
     }
 
+    /// Scan for a given list of URIs
+    ///
+    /// Send a packet to each URI and detect if an acknoledgement is sent back.
+    ///
+    /// Returns the list of URIs that acknoledged
     pub async fn scan_selected(&self, uris: Vec<&str>) -> Result<Vec<String>> {
         let mut found = Vec::new();
         for uri in uris {
@@ -124,6 +143,9 @@ impl LinkContext {
         Ok(found)
     }
 
+    /// Open a link connection to a given URI
+    ///
+    /// If successful, the link [Connection] is returned.
     pub async fn open_link(&self, uri: &str) -> Result<Connection> {
         let (radio_nth, channel, address, flags) = self.parse_uri(uri)?;
 

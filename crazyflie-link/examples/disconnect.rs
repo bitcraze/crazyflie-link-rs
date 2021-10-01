@@ -1,5 +1,5 @@
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crazyflie_link::LinkContext;
 
@@ -13,7 +13,10 @@ async fn main() -> anyhow::Result<()> {
     let link_task = link.clone();
     async_std::task::spawn(async move {
         let reason = link_task.wait_close().await;
-        println!(" -= after wait_close() =- The link seem to have been closed for reason \"{}\"!", reason);
+        println!(
+            " -= after wait_close() =- The link seem to have been closed for reason \"{}\"!",
+            reason
+        );
     });
 
     async_std::task::sleep(Duration::from_secs(2)).await;
