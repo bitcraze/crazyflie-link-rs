@@ -17,11 +17,10 @@
 //! Example:
 //!
 //! ``` no_run
-//! # use std::sync::Arc;
 //! # use std::error::Error;
 //! # async fn test() -> Result<(), Box<dyn Error>> {
 //! // Create a link Context
-//! let context = crazyflie_link::LinkContext::new(Arc::new(async_executors::AsyncStd));
+//! let context = crazyflie_link::LinkContext::new(async_executors::AsyncStd);
 //!
 //! // Scan for Crazyflies
 //! let cf_found = context.scan([0xe7; 5]).await?;

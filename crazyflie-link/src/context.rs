@@ -22,10 +22,10 @@ pub struct LinkContext {
 
 impl LinkContext {
     /// Create a new link context
-    pub fn new(executor: Arc<dyn async_executors::LocalSpawnHandle<()> + Send + Sync>) -> Self {
+    pub fn new(executor: impl async_executors::LocalSpawnHandle<()> + Send + Sync + 'static) -> Self {
         Self {
             radios: Mutex::new(BTreeMap::new()),
-            executor,
+            executor: Arc::new(executor),
         }
     }
 

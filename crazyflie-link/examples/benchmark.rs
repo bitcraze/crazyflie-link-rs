@@ -2,7 +2,6 @@
 use async_std::future::timeout;
 use crazyflie_link::{LinkContext, Packet};
 use futures::Future;
-use std::sync::Arc;
 use std::{
     ops::Div,
     time::{Duration, Instant},
@@ -44,7 +43,7 @@ async fn purge_crazyflie_queues(link: &crazyflie_link::Connection) {
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
-    let link_context = LinkContext::new(Arc::new(async_executors::AsyncStd));
+    let link_context = LinkContext::new(async_executors::AsyncStd);
     let link = link_context.open_link(&opt.link_uri).await?;
 
     println!("Test ping:");

@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use async_std::future::timeout;
 use byteorder::{ByteOrder, LittleEndian};
 use crazyflie_link::{Connection, LinkContext, Packet};
-use std::sync::Arc;
 use std::time::Duration;
 use structopt::StructOpt;
 
@@ -31,7 +30,7 @@ struct BootloaderInfo {
 }
 
 async fn scan_for_bootloader() -> Result<String> {
-    let context = crate::LinkContext::new(Arc::new(async_executors::AsyncStd));
+    let context = crate::LinkContext::new(async_executors::AsyncStd);
     let res = context
         .scan_selected(vec![
             "radio://0/110/2M/E7E7E7E7E7",
@@ -122,7 +121,7 @@ async fn start_bootloader(context: &LinkContext, warm: bool, uri: &str) -> Resul
 #[async_std::main]
 async fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let context = LinkContext::new(Arc::new(async_executors::AsyncStd));
+    let context = LinkContext::new(async_executors::AsyncStd);
     let mut uri = String::new();
 
     if opt.warm {
