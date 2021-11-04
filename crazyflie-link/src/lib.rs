@@ -25,8 +25,8 @@
 //! // Scan for Crazyflies
 //! let cf_found = context.scan([0xe7; 5]).await?;
 //!
-//! if !cf_found.is_empty() {
-//!     let connection = context.open_link(&cf_found[0]).await?;
+//! if let Some(uri) = cf_found.first() {
+//!     let connection = context.open_link(uri).await?;
 //!     let packet = connection.recv_packet().await?;
 //!     println!("Packet received: {:?}", packet);
 //! }
