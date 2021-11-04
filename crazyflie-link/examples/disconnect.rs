@@ -7,7 +7,7 @@ use crazyflie_link::LinkContext;
 async fn main() -> anyhow::Result<()> {
     let link_context = LinkContext::new(async_executors::AsyncStd);
 
-    println!("Conneting the first time");
+    println!("Connecting the first time");
     let link = Arc::new(link_context.open_link("radio://0/60/2M/E7E7E7E7E7").await?);
 
     let link_task = link.clone();
@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     println!("Waiting 3 seconds");
     async_std::task::sleep(Duration::from_secs(3)).await;
 
-    println!("Conneting the second time");
+    println!("Connecting the second time");
     let link = link_context.open_link("radio://0/60/2M/E7E7E7E7E7").await?;
 
     async_std::task::sleep(Duration::from_secs(2)).await;
@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     println!("Waiting 3 seconds");
     async_std::task::sleep(Duration::from_secs(3)).await;
 
-    println!("Conneting and dropping directly");
+    println!("Connecting and dropping directly");
     let link = link_context.open_link("radio://0/60/2M/E7E7E7E7E7").await?;
     drop(link);
 

@@ -5,7 +5,7 @@
 //! This Crate implement the Crazyflie radio link connection using Crazyradio.
 //! It allows to scan for Crazyflies and to open a safe bidirectional radio connection using a Crazyradio.
 //!
-//! The entry point to this Crazte is the [LinkContext], it keeps track of Crazyradio dongles
+//! The entry point to this Crate is the [LinkContext], it keeps track of Crazyradio dongles
 //! and provides functions to open a link [Connection].
 //!
 //! Since this crate spawns async tasks, it needs to know about what async executor to use.

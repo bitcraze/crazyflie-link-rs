@@ -95,7 +95,7 @@ impl LinkContext {
 
     /// Scan for Crazyflies at some given address
     ///
-    /// This function will send a packet to every channels and look for an acknolegement in return.
+    /// This function will send a packet to every channels and look for an acknowledgement in return.
     ///
     /// The address argument will set the radio packets address to scan for.
     ///
@@ -125,9 +125,9 @@ impl LinkContext {
 
     /// Scan for a given list of URIs
     ///
-    /// Send a packet to each URI and detect if an acknoledgement is sent back.
+    /// Send a packet to each URI and detect if an acknowledgement is sent back.
     ///
-    /// Returns the list of URIs that acknoledged
+    /// Returns the list of URIs that acknowledged
     pub async fn scan_selected(&self, uris: Vec<&str>) -> Result<Vec<String>> {
         let mut found = Vec::new();
         for uri in uris {
