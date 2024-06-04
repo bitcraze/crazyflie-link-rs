@@ -16,7 +16,7 @@ exclude = [
 
 [dependencies]
 bitflags = "1.0"
-crazyradio = { version="0.2", features = ["shared_radio", "async"], optional = true }
+crazyradio = { version="0.3.0", features = ["shared_radio", "async"], optional = true }
 crazyradio-webusb = { version="0.2", optional = true }
 wasm-timer = { version="0.2.5", optional = true }
 flume = "0.10"
