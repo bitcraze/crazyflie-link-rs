@@ -18,7 +18,7 @@ impl LinkContext {
         LinkContext { context }
     }
 
-    #[args(address = "[0xe7; 5]")]
+    #[pyo3(signature = (address = [0xe7; 5]))]
     fn scan(&self, address: [u8; 5]) -> PyResult<Vec<String>> {
         task::block_on(async {
             self.context
@@ -28,10 +28,10 @@ impl LinkContext {
         })
     }
 
-    fn scan_selected(&self, uris: Vec<&str>) -> PyResult<Vec<String>> {
+    fn scan_selected(&self, uris: Vec<String>) -> PyResult<Vec<String>> {
         task::block_on(async {
             self.context
-                .scan_selected(uris)
+                .scan_selected(uris.iter().map(|s| s.as_str()).collect())
                 .await
                 .map_err(|e| PyErr::new::<PyIOError, _>(format!("{:?}", e)))
         })
@@ -75,7 +75,7 @@ impl Connection {
         })
     }
 
-    #[args(timeout = "100")]
+    #[pyo3(signature = (timeout = 100))]
     fn receive_packet(&self, py: Python, timeout: u64) -> PyResult<Option<Vec<u8>>> {
         py.allow_threads(|| {
             let connection = self.connection.read().unwrap();
@@ -109,7 +109,7 @@ impl Connection {
 }
 
 #[pymodule]
-fn cflinkrs(_py: Python, m: &PyModule) -> PyResult<()> {
+fn cflinkrs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LinkContext>()?;
 
     Ok(())
