@@ -1,6 +1,5 @@
-use async_std::future;
-use async_std::task;
 use pyo3::{exceptions::PyIOError, prelude::*};
+use tokio::runtime::Handle;
 use std::{sync::RwLock, time::Duration};
 
 #[pyclass]
@@ -13,14 +12,14 @@ impl LinkContext {
     #[new]
     fn new() -> Self {
         let context =
-            crazyflie_link::LinkContext::new(std::sync::Arc::new(async_executors::AsyncStd));
+            crazyflie_link::LinkContext::new();
 
         LinkContext { context }
     }
 
     #[pyo3(signature = (address = [0xe7; 5]))]
     fn scan(&self, address: [u8; 5]) -> PyResult<Vec<String>> {
-        task::block_on(async {
+        Handle::current().block_on(async {
             self.context
                 .scan(address)
                 .await
@@ -29,7 +28,7 @@ impl LinkContext {
     }
 
     fn scan_selected(&self, uris: Vec<String>) -> PyResult<Vec<String>> {
-        task::block_on(async {
+        Handle::current().block_on(async {
             self.context
                 .scan_selected(uris.iter().map(|s| s.as_str()).collect())
                 .await
@@ -38,7 +37,7 @@ impl LinkContext {
     }
 
     fn open_link(&self, uri: &str) -> PyResult<Connection> {
-        let connection = task::block_on(async {
+        let connection = Handle::current().block_on(async {
             self.context
                 .open_link(uri)
                 .await
@@ -63,7 +62,7 @@ impl Connection {
             let connection = self.connection.read().unwrap();
 
             if let Some(connection) = connection.as_ref() {
-                task::block_on(async {
+                Handle::current().block_on(async {
                     connection
                         .send_packet(crazyflie_link::Packet::from(packet))
                         .await
@@ -82,8 +81,8 @@ impl Connection {
 
             if let Some(connection) = connection.as_ref() {
                 let timeout = Duration::from_millis(timeout);
-                let pk = task::block_on(async {
-                    match future::timeout(timeout, connection.recv_packet()).await {
+                let pk = Handle::current().block_on(async {
+                    match tokio::time::timeout(timeout, connection.recv_packet()).await {
                         Ok(packet) => {
                             if let Ok(packet) = packet {
                                 Ok(packet.into())
@@ -103,7 +102,7 @@ impl Connection {
 
     fn close(&self) {
         if let Some(connection) = self.connection.write().unwrap().take() {
-            task::block_on(async { connection.close().await })
+            Handle::current().block_on(async { connection.close().await })
         }
     }
 }

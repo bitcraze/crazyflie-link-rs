@@ -10,8 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 crazyflie-link = { path = "../crazyflie-link" }
-async-std = "1.9"
-async_executors = { version = "0.4.1", features = ["async_std"] }
+tokio = { version = "1.36.0", features = ["full"] }
 
 [dependencies.pyo3]
 version = "0.21.2"

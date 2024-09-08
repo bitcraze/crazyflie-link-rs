@@ -1,14 +1,14 @@
-use async_std::future::timeout;
+use tokio::time::{Duration, timeout};
 use crazyflie_link::LinkContext;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let link_context = LinkContext::new(async_executors::AsyncStd);
+    let link_context = LinkContext::new();
 
     let link = link_context.open_link("radio://0/60/2M/E7E7E7E7E7").await?;
 
     loop {
-        let packet = timeout(std::time::Duration::from_secs(10), link.recv_packet())
+        let packet = timeout(Duration::from_secs(10), link.recv_packet())
             .await?
             .unwrap();
         let data = packet.get_data();
