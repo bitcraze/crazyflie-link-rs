@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Result};
-use async_std::future::timeout;
+use tokio::time::{timeout, sleep, Duration};
 use byteorder::{ByteOrder, LittleEndian};
 use crazyflie_link::{Connection, LinkContext, Packet};
-use std::time::Duration;
 use structopt::StructOpt;
 
 const TARGET_STM32: u8 = 0xFF;
@@ -30,7 +29,7 @@ struct BootloaderInfo {
 }
 
 async fn scan_for_bootloader() -> Result<String> {
-    let context = crate::LinkContext::new(async_executors::AsyncStd);
+    let context = crate::LinkContext::new();
     let res = context
         .scan_selected(vec![
             "radio://0/110/2M/E7E7E7E7E7",
@@ -95,7 +94,7 @@ async fn reset_to_bootloader(link: &Connection) -> Result<String> {
         let packet: Packet = vec![0xFF, TARGET_NRF51, 0xF0, 0x00].into();
         link.send_packet(packet).await?;
     }
-    async_std::task::sleep(Duration::from_secs(1)).await;
+    sleep(Duration::from_secs(1)).await;
 
     Ok(format!(
         "radio://0/0/2M/{}?safelink=0&ackfilter=0",
@@ -108,7 +107,7 @@ async fn start_bootloader(context: &LinkContext, warm: bool, uri: &str) -> Resul
         let link = context.open_link(&format!("{}?safelink=0", uri)).await?;
         let uri = reset_to_bootloader(&link).await;
         link.close().await;
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(1)).await;
         uri
     } else {
         scan_for_bootloader().await
@@ -118,10 +117,10 @@ async fn start_bootloader(context: &LinkContext, warm: bool, uri: &str) -> Resul
     Ok(link)
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let context = LinkContext::new(async_executors::AsyncStd);
+    let context = LinkContext::new();
     let mut uri = String::new();
 
     if opt.warm {

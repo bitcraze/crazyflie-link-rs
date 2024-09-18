@@ -16,16 +16,14 @@ use url::Url;
 
 /// Context for the link connections
 pub struct LinkContext {
-    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
-    executor: Arc<dyn async_executors::LocalSpawnHandle<()> + Send + Sync>,
+    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>
 }
 
 impl LinkContext {
     /// Create a new link context
-    pub fn new(executor: impl async_executors::LocalSpawnHandle<()> + Send + Sync + 'static) -> Self {
+    pub fn new() -> Self {
         Self {
-            radios: Mutex::new(BTreeMap::new()),
-            executor: Arc::new(executor),
+            radios: Mutex::new(BTreeMap::new())
         }
     }
 
@@ -151,6 +149,6 @@ impl LinkContext {
 
         let radio = self.get_radio(radio_nth).await?;
 
-        Connection::new(self.executor.clone(), radio, channel, address, flags).await
+        Connection::new(radio, channel, address, flags).await
     }
 }

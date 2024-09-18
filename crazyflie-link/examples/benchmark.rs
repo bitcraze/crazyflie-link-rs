@@ -1,5 +1,5 @@
 // Simple benchmark test, test ping time and duplex bandwidth
-use async_std::future::timeout;
+use tokio::time::timeout;
 use crazyflie_link::{LinkContext, Packet};
 use futures::Future;
 use std::{
@@ -39,11 +39,11 @@ async fn purge_crazyflie_queues(link: &crazyflie_link::Connection) {
     }
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
-    let link_context = LinkContext::new(async_executors::AsyncStd);
+    let link_context = LinkContext::new();
     let link = link_context.open_link(&opt.link_uri).await?;
 
     println!("Test ping:");

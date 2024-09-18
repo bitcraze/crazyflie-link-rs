@@ -2,8 +2,6 @@
 use crate::crazyradio::{Channel, SharedCrazyradio};
 use crate::error::Result;
 use crate::Packet;
-use async_executors::LocalSpawnHandle;
-use async_executors::{JoinHandle, LocalSpawnHandleExt};
 use futures_channel::oneshot;
 use futures_util::lock::Mutex;
 use log::{debug, info, warn};
@@ -13,10 +11,7 @@ use std::sync::Arc;
 
 use std::time;
 
-#[cfg(feature = "native")]
 use std::time::Instant;
-#[cfg(feature = "webusb")]
-use wasm_timer::Instant;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 
@@ -44,13 +39,11 @@ pub struct Connection {
     uplink: flume::Sender<Vec<u8>>,
     downlink: flume::Receiver<Vec<u8>>,
     disconnect_channel: flume::Receiver<()>,
-    disconnect: Arc<AtomicBool>,
-    _thread_handle: JoinHandle<()>,
+    disconnect: Arc<AtomicBool>
 }
 
 impl Connection {
     pub(crate) async fn new(
-        executor: Arc<dyn LocalSpawnHandle<()> + Sync + Send>,
         radio: Arc<SharedCrazyradio>,
         channel: Channel,
         address: [u8; 5],
@@ -79,8 +72,7 @@ impl Connection {
             flags,
             disconnect: disconnect.clone(),
         };
-        let thread_handle = executor
-            .spawn_handle_local(async move {
+        tokio::spawn(async move {
                 if let Err(e) = thread.run(connection_initialized_send).await {
                     thread
                         .update_status(ConnectionStatus::Disconnected(format!(
@@ -90,8 +82,7 @@ impl Connection {
                         .await;
                 }
                 drop(thread.disconnect_channel);
-            })
-            .expect("Spawning connection task");
+            });
 
         // Wait for, either, the connection being established or failed initialization
         connection_initialized.await.unwrap();
@@ -101,8 +92,7 @@ impl Connection {
             disconnect_channel: disconnect_channel_rx,
             uplink: uplink_send,
             downlink: downlink_recv,
-            disconnect,
-            _thread_handle: thread_handle,
+            disconnect
         })
     }
 

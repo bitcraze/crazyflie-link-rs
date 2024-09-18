@@ -1,9 +1,9 @@
 use anyhow::Result;
 use crazyflie_link::LinkContext;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
-    let context = crate::LinkContext::new(async_executors::AsyncStd);
+    let context = crate::LinkContext::new();
 
     let found = context.scan([0xe7; 5]).await?;
 
