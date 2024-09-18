@@ -11,10 +11,7 @@ use std::sync::Arc;
 
 use std::time;
 
-#[cfg(feature = "native")]
 use std::time::Instant;
-#[cfg(feature = "webusb")]
-use wasm_timer::Instant;
 
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 

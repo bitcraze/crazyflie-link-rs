@@ -16,16 +16,14 @@ exclude = [
 
 [dependencies]
 bitflags = "1.0"
-crazyradio = { version="0.3.0", features = ["shared_radio", "async"], optional = true }
-crazyradio-webusb = { version="0.2", optional = true }
-wasm-timer = { version="0.2.5", optional = true }
+crazyradio = { version="0.3.0", features = ["shared_radio", "async"]}
 flume = "0.10"
 log = "0.4"
 rand = "0.8"
 thiserror = "1"
 url = "2.2"
 hex = "0.4.3"
-tokio = { version = "1.36.0", features = ["full"], optional = true }
+tokio = { version = "1.36.0", features = ["full"]}
 futures = "0.3"
 futures-util = "0.3"
 futures-channel = "0.3"
@@ -34,9 +32,3 @@ futures-channel = "0.3"
 anyhow = "1"
 byteorder = "1.2.2"
 structopt = "0.3"
-
-[features]
-default = ["native", "tokio"]
-tokio = ["dep:tokio"]
-native = ["crazyradio"]
-webusb = ["crazyradio-webusb", "wasm-timer"]
