@@ -15,6 +15,8 @@ pub enum Error {
     ChannelRecvError(flume::RecvError),
     #[error("Threading error: {0:?}")]
     ChannelSendError(flume::SendError<Vec<u8>>),
+    #[error("USB error: {0:?}")]
+    USBSubsystemError(rusb::Error),
 }
 
 impl From<crate::crazyradio::Error> for Error {
@@ -51,4 +53,10 @@ impl From<RecvTimeoutError> for Error {
     fn from(_error: RecvTimeoutError) -> Self {
         Error::Timeout
     }
+}
+
+impl From<rusb::Error> for Error {
+  fn from(error: rusb::Error) -> Self {
+      Error::USBSubsystemError(error)
+  }
 }

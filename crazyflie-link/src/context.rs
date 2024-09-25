@@ -12,6 +12,8 @@ use futures_util::lock::Mutex;
 use hex::FromHex;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
+use std::time::Duration;
+use rusb::DeviceList;
 use url::Url;
 
 /// Context for the link connections
@@ -99,24 +101,54 @@ impl LinkContext {
     ///
     /// It returns a list of URIs that can be passed to the [LinkContext::open_link()] function.
     pub async fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
-        let channels = self
-            .get_radio(0)
-            .await?
-            .scan_async(
-                Channel::from_number(0)?,
-                Channel::from_number(125)?,
-                address,
-                vec![0xff],
-            )
-            .await?;
+        let channels = match self.get_radio(0).await {
+            Ok(radio) => {
+              radio.scan_async(
+                  Channel::from_number(0)?,
+                  Channel::from_number(125)?,
+                  address,
+                  vec![0xff],
+              )
+              .await?
+            }
+            Err(_) => Vec::new(),
+        };
 
         let mut found = Vec::new();
 
         for channel in channels {
-            let channel: u8 = channel.into();
-            let address = hex::encode(address.to_vec()).to_uppercase();
-            found.push(format!("radio://0/{}/2M/{}", channel, address));
+          let channel: u8 = channel.into();
+          let address = hex::encode(address.to_vec()).to_uppercase();
+          found.push(format!("radio://0/{}/2M/{}", channel, address));
         }
+
+        // Spawn a blocking function onto the runtime
+        let found = tokio::task::spawn_blocking(|| {
+          for device in DeviceList::new()?.iter() {
+            let device_desc = match device.device_descriptor() {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+  
+            if device_desc.vendor_id() == 0x0483 && device_desc.product_id() == 0x5740 {
+                let timeout = Duration::from_secs(1);
+                let handle = match device.open() {
+                  Ok(d) => d,
+                  Err(_) => continue,
+                };
+  
+              let language = match handle.read_languages(timeout).unwrap_or_default().first() {
+                Some(l) => *l,
+                None => continue,
+              };
+  
+              let serial = handle.read_serial_number_string(language, &device_desc, timeout)?;
+  
+              found.push(format!("usb://{}",serial));
+            }
+          }
+          Result::<_>::Ok(found)
+        }).await.unwrap()?;
 
         Ok(found)
     }
