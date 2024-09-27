@@ -36,6 +36,7 @@ extern crate bitflags;
 
 mod connection;
 mod crazyradio_connection;
+mod crazyflie_usb_connection;
 mod context;
 mod error;
 mod packet;

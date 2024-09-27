@@ -36,8 +36,16 @@ pub struct CrazyradioConnection {
 }
 
 impl CrazyradioConnection {
-    pub async fn open(link_context: &LinkContext, uri: &str) -> Result<Option<impl ConnectionTrait>> {
-        let (radio, channel, address, flags) = Self::parse_uri(uri)?;
+    pub async fn open(link_context: &LinkContext, uri: &str) -> Result<Option<CrazyradioConnection>> {
+        let (radio, channel, address, flags) = match Self::parse_uri(uri) {
+            Ok((radio, channel, address, flags)) => (radio, channel, address, flags),
+            Err(Error::InvalidUriScheme) => {
+                return Ok(None);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        };
 
         let radio = link_context.get_radio(radio).await?;
         let connection = CrazyradioConnection::new(radio, channel, address, flags).await?;
@@ -102,7 +110,7 @@ impl CrazyradioConnection {
       let uri = Url::parse(uri)?;
 
       if uri.scheme() != "radio" {
-          return Err(Error::InvalidUri);
+          return Err(Error::InvalidUriScheme);
       }
 
       let radio: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;

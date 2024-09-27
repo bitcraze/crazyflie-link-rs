@@ -5,6 +5,8 @@
 
 
 use crate::connection::Connection;
+use crate::connection::ConnectionTrait;
+use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
 use crate::crazyradio::Channel;
 use crate::crazyradio::SharedCrazyradio;
 use crate::crazyradio_connection::CrazyradioConnection;
@@ -133,10 +135,16 @@ impl LinkContext {
     ///
     /// If successful, the link [Connection] is returned.
     pub async fn open_link(&self, uri: &str) -> Result<Connection> {
-        let connection = CrazyradioConnection::open(self, uri).await?;
+        let connection: Option<Box<dyn ConnectionTrait + Send + Sync>> = if let Some(connection) = CrazyradioConnection::open(self, uri).await? {
+          Some(Box::new(connection))
+        } else if let Some(connection) = CrazyflieUSBConnection::open(self, uri).await? {
+          Some(Box::new(connection))
+        } else {
+          None
+        };
 
         let internal_connection = connection.ok_or(Error::InvalidUri)?;
 
-        Ok(Connection::new(Box::new(internal_connection)))
+        Ok(Connection::new(internal_connection))
     }
 }
