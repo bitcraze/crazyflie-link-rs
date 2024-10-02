@@ -58,7 +58,7 @@ impl From<RecvTimeoutError> for Error {
 }
 
 impl From<rusb::Error> for Error {
-  fn from(error: rusb::Error) -> Self {
-      Error::USBSubsystemError(error)
-  }
+    fn from(error: rusb::Error) -> Self {
+        Error::USBSubsystemError(error)
+    }
 }

@@ -1,5 +1,5 @@
-use crate::Packet;
 use crate::error::Result;
+use crate::Packet;
 use async_trait::async_trait;
 
 /// Describe the current link connection status
@@ -16,7 +16,6 @@ pub enum ConnectionStatus {
 // Describes the interface for a connection to a Crazyflie
 #[async_trait]
 pub trait ConnectionTrait {
-
     /// Wait for the connection to be closed. Returns the message stored in the
     /// disconnected connection status that indicate the reason for the disconnection
     async fn wait_close(&self) -> String;
@@ -47,23 +46,22 @@ pub trait ConnectionTrait {
     /// This function can return an error if the connection task is not active anymore.
     /// This can happen if the Crazyflie is disconnected due to a timeout
     async fn recv_packet(&self) -> Result<Packet>;
-
 }
 
 /// Connection to a Crazyflie
 pub struct Connection {
-    /// Reference to the internal connection object 
-    internal_connection: Box<dyn ConnectionTrait + Send + Sync>
+    /// Reference to the internal connection object
+    internal_connection: Box<dyn ConnectionTrait + Send + Sync>,
 }
 
 impl Connection {
     /// Create a new connection object
     pub fn new(internal_connection: Box<dyn ConnectionTrait + Send + Sync>) -> Self {
         Self {
-            internal_connection
+            internal_connection,
         }
     }
-    
+
     /// Wait for the connection to be closed. Returns the message stored in the
     /// disconnected connection status that indicate the reason for the disconnection
     pub async fn wait_close(&self) -> String {

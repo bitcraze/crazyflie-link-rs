@@ -3,15 +3,15 @@ use crate::connection::ConnectionTrait;
 use crate::crazyradio::{Channel, SharedCrazyradio};
 use crate::error::{Error, Result};
 use crate::{ConnectionStatus, LinkContext, Packet};
+use async_trait::async_trait;
 use futures_channel::oneshot;
 use futures_util::lock::Mutex;
+use hex::FromHex;
 use log::{debug, info, warn};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use url::Url;
-use hex::FromHex;
-use async_trait::async_trait;
 
 use std::time;
 
@@ -32,11 +32,14 @@ pub struct CrazyradioConnection {
     uplink: flume::Sender<Vec<u8>>,
     downlink: flume::Receiver<Vec<u8>>,
     disconnect_channel: flume::Receiver<()>,
-    disconnect: Arc<AtomicBool>
+    disconnect: Arc<AtomicBool>,
 }
 
 impl CrazyradioConnection {
-    pub async fn open(link_context: &LinkContext, uri: &str) -> Result<Option<CrazyradioConnection>> {
+    pub async fn open(
+        link_context: &LinkContext,
+        uri: &str,
+    ) -> Result<Option<CrazyradioConnection>> {
         let (radio, channel, address, flags) = match Self::parse_uri(uri) {
             Ok((radio, channel, address, flags)) => (radio, channel, address, flags),
             Err(Error::InvalidUriScheme) => {
@@ -83,16 +86,16 @@ impl CrazyradioConnection {
             disconnect: disconnect.clone(),
         };
         tokio::spawn(async move {
-                if let Err(e) = thread.run(connection_initialized_send).await {
-                    thread
-                        .update_status(ConnectionStatus::Disconnected(format!(
-                            "Connection error: {}",
-                            e
-                        )))
-                        .await;
-                }
-                drop(thread.disconnect_channel);
-            });
+            if let Err(e) = thread.run(connection_initialized_send).await {
+                thread
+                    .update_status(ConnectionStatus::Disconnected(format!(
+                        "Connection error: {}",
+                        e
+                    )))
+                    .await;
+            }
+            drop(thread.disconnect_channel);
+        });
 
         // Wait for, either, the connection being established or failed initialization
         connection_initialized.await.unwrap();
@@ -102,61 +105,59 @@ impl CrazyradioConnection {
             disconnect_channel: disconnect_channel_rx,
             uplink: uplink_send,
             downlink: downlink_recv,
-            disconnect
+            disconnect,
         })
     }
 
     fn parse_uri(uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags)> {
-      let uri = Url::parse(uri)?;
+        let uri = Url::parse(uri)?;
 
-      if uri.scheme() != "radio" {
-          return Err(Error::InvalidUriScheme);
-      }
+        if uri.scheme() != "radio" {
+            return Err(Error::InvalidUriScheme);
+        }
 
-      let radio: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;
+        let radio: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;
 
-      let path: Vec<&str> = uri.path_segments().ok_or(Error::InvalidUri)?.collect();
-      if path.len() != 3 {
-          return Err(Error::InvalidUri);
-      }
-      let channel = Channel::from_number(path[0].parse()?)?;
-      let _rate = path[1];
-      let addr_str = path[2];
+        let path: Vec<&str> = uri.path_segments().ok_or(Error::InvalidUri)?.collect();
+        if path.len() != 3 {
+            return Err(Error::InvalidUri);
+        }
+        let channel = Channel::from_number(path[0].parse()?)?;
+        let _rate = path[1];
+        let addr_str = path[2];
 
-      if addr_str.len() > 10 {
-          return Err(Error::InvalidUri);
-      }
+        if addr_str.len() > 10 {
+            return Err(Error::InvalidUri);
+        }
 
-      let address = match <[u8; 5]>::from_hex(format!("{:0>10}", addr_str)) {
-          Ok(address) => address,
-          Err(_) => return Err(Error::InvalidUri),
-      };
+        let address = match <[u8; 5]>::from_hex(format!("{:0>10}", addr_str)) {
+            Ok(address) => address,
+            Err(_) => return Err(Error::InvalidUri),
+        };
 
-      let mut flags = ConnectionFlags::SAFELINK | ConnectionFlags::ACKFILTER;
-      for (key, value) in uri.query_pairs() {
-          match key.as_ref() {
-              "safelink" => {
-                  if value == "0" {
-                      flags.remove(ConnectionFlags::SAFELINK);
-                  }
-              }
-              "ackfilter" => {
-                  if value == "0" {
-                      flags.remove(ConnectionFlags::ACKFILTER);
-                  }
-              }
-              _ => continue,
-          };
-      }
+        let mut flags = ConnectionFlags::SAFELINK | ConnectionFlags::ACKFILTER;
+        for (key, value) in uri.query_pairs() {
+            match key.as_ref() {
+                "safelink" => {
+                    if value == "0" {
+                        flags.remove(ConnectionFlags::SAFELINK);
+                    }
+                }
+                "ackfilter" => {
+                    if value == "0" {
+                        flags.remove(ConnectionFlags::ACKFILTER);
+                    }
+                }
+                _ => continue,
+            };
+        }
 
-      Ok((radio, channel, address, flags))
-  }
-  }
+        Ok((radio, channel, address, flags))
+    }
+}
 
-  #[async_trait]
-  impl ConnectionTrait for CrazyradioConnection {
-    /// Wait for the connection to be closed. Returns the message stored in the
-    /// disconnected connection status that indicate the reason for the disconnection
+#[async_trait]
+impl ConnectionTrait for CrazyradioConnection {
     async fn wait_close(&self) -> String {
         // Wait for the connection thread to drop the disconnect channel
         let _ = self.disconnect_channel.recv_async().await;

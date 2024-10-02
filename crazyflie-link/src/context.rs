@@ -3,7 +3,6 @@
 //! The Link context keeps track of the radio dongles opened and used by connections.
 //! It also keeps track of the async executor
 
-
 use crate::connection::Connection;
 use crate::connection::ConnectionTrait;
 use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
@@ -13,21 +12,21 @@ use crate::crazyradio_connection::CrazyradioConnection;
 use crate::error::{Error, Result};
 use futures_util::lock::Mutex;
 
+use rusb::DeviceList;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
-use rusb::DeviceList;
 
 /// Context for the link connections
 pub struct LinkContext {
-    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>
+    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
 }
 
 impl LinkContext {
     /// Create a new link context
     pub fn new() -> Self {
         Self {
-            radios: Mutex::new(BTreeMap::new())
+            radios: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -59,13 +58,14 @@ impl LinkContext {
     pub async fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
         let channels = match self.get_radio(0).await {
             Ok(radio) => {
-              radio.scan_async(
-                  Channel::from_number(0)?,
-                  Channel::from_number(125)?,
-                  address,
-                  vec![0xff],
-              )
-              .await?
+                radio
+                    .scan_async(
+                        Channel::from_number(0)?,
+                        Channel::from_number(125)?,
+                        address,
+                        vec![0xff],
+                    )
+                    .await?
             }
             Err(_) => Vec::new(),
         };
@@ -73,38 +73,42 @@ impl LinkContext {
         let mut found = Vec::new();
 
         for channel in channels {
-          let channel: u8 = channel.into();
-          let address = hex::encode(address.to_vec()).to_uppercase();
-          found.push(format!("radio://0/{}/2M/{}", channel, address));
+            let channel: u8 = channel.into();
+            let address = hex::encode(address.to_vec()).to_uppercase();
+            found.push(format!("radio://0/{}/2M/{}", channel, address));
         }
 
         // Spawn a blocking function onto the runtime
         let found = tokio::task::spawn_blocking(|| {
-          for device in DeviceList::new()?.iter() {
-            let device_desc = match device.device_descriptor() {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
-  
-            if device_desc.vendor_id() == 0x0483 && device_desc.product_id() == 0x5740 {
-                let timeout = Duration::from_secs(1);
-                let handle = match device.open() {
-                  Ok(d) => d,
-                  Err(_) => continue,
+            for device in DeviceList::new()?.iter() {
+                let device_desc = match device.device_descriptor() {
+                    Ok(d) => d,
+                    Err(_) => continue,
                 };
-  
-              let language = match handle.read_languages(timeout).unwrap_or_default().first() {
-                Some(l) => *l,
-                None => continue,
-              };
-  
-              let serial = handle.read_serial_number_string(language, &device_desc, timeout)?;
-  
-              found.push(format!("usb://{}",serial));
+
+                if device_desc.vendor_id() == 0x0483 && device_desc.product_id() == 0x5740 {
+                    let timeout = Duration::from_secs(1);
+                    let handle = match device.open() {
+                        Ok(d) => d,
+                        Err(_) => continue,
+                    };
+
+                    let language = match handle.read_languages(timeout).unwrap_or_default().first()
+                    {
+                        Some(l) => *l,
+                        None => continue,
+                    };
+
+                    let serial =
+                        handle.read_serial_number_string(language, &device_desc, timeout)?;
+
+                    found.push(format!("usb://{}", serial));
+                }
             }
-          }
-          Result::<_>::Ok(found)
-        }).await.unwrap()?;
+            Result::<_>::Ok(found)
+        })
+        .await
+        .unwrap()?;
 
         Ok(found)
     }
@@ -135,13 +139,14 @@ impl LinkContext {
     ///
     /// If successful, the link [Connection] is returned.
     pub async fn open_link(&self, uri: &str) -> Result<Connection> {
-        let connection: Option<Box<dyn ConnectionTrait + Send + Sync>> = if let Some(connection) = CrazyradioConnection::open(self, uri).await? {
-          Some(Box::new(connection))
-        } else if let Some(connection) = CrazyflieUSBConnection::open(self, uri).await? {
-          Some(Box::new(connection))
-        } else {
-          None
-        };
+        let connection: Option<Box<dyn ConnectionTrait + Send + Sync>> =
+            if let Some(connection) = CrazyradioConnection::open(self, uri).await? {
+                Some(Box::new(connection))
+            } else if let Some(connection) = CrazyflieUSBConnection::open(self, uri).await? {
+                Some(Box::new(connection))
+            } else {
+                None
+            };
 
         let internal_connection = connection.ok_or(Error::InvalidUri)?;
 
