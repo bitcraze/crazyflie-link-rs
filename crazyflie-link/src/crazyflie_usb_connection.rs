@@ -3,7 +3,7 @@ use crate::error::{Error, Result};
 use crate::{ConnectionStatus, LinkContext, Packet};
 use futures_channel::oneshot;
 use futures_util::lock::Mutex;
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
@@ -25,7 +25,11 @@ impl CrazyflieUSBConnection {
     pub async fn open(_link_context: &LinkContext, uri: &str) -> Result<Option<CrazyflieUSBConnection>> {
         let serial = Self::parse_uri(uri)?;
 
-        let (_device_desc, handle) = tokio::task::spawn_blocking(move || {
+        let (
+            _device_desc,
+            handle,
+            handle_ctrl
+          ) = tokio::task::spawn_blocking(move || {
           for device in DeviceList::new()?.iter() {
             let device_desc = match device.device_descriptor() {
                 Ok(d) => d,
@@ -34,7 +38,15 @@ impl CrazyflieUSBConnection {
   
             if device_desc.vendor_id() == 0x0483 && device_desc.product_id() == 0x5740 {
                 let timeout = Duration::from_secs(1);
+
                 let handle = match device.open() {
+                  Ok(d) => d,
+                  Err(_) => continue,
+                };
+
+                handle.claim_interface(0)?;
+
+                let handle_ctrl = match device.open() {
                   Ok(d) => d,
                   Err(_) => continue,
                 };
@@ -47,49 +59,121 @@ impl CrazyflieUSBConnection {
               let detected_serial = handle.read_serial_number_string(language, &device_desc, timeout)?;
               
               if detected_serial == serial {
-                return Ok((device_desc, handle));
+                return Ok((device_desc, handle, handle_ctrl));
               }
             }
           }
           Err(Error::InvalidUri)
         }).await.unwrap()?;
 
-        let connection = CrazyflieUSBConnection::new(handle).await?;
+        let connection = CrazyflieUSBConnection::new(
+          handle,
+          handle_ctrl
+        ).await?;
 
         Ok(Some(connection))
     }
 
     async fn new(
-        usb_handle: DeviceHandle<GlobalContext>
+        usb_handle: DeviceHandle<GlobalContext>,
+        usb_handle_ctrl: DeviceHandle<GlobalContext>,
     ) -> Result<CrazyflieUSBConnection> {
         let status = Arc::new(Mutex::new(ConnectionStatus::Connecting));
 
         let (disconnect_channel_tx, disconnect_channel_rx) = flume::bounded(0);
         let disconnect = Arc::new(AtomicBool::new(false));
 
-        let (uplink_send, uplink_recv) = flume::bounded(1000);
-        let (downlink_send, downlink_recv) = flume::bounded(1000);
+        let (uplink_send, uplink_recv) = flume::bounded::<Vec<u8>>(1000);
+        let (downlink_send, downlink_recv) = flume::bounded::<Vec<u8>>(1000);
 
         let (connection_initialized_send, connection_initialized) = oneshot::channel();
 
-        let mut thread = ConnectionThread {
-            usb_handle,
-            status: status.clone(),
-            disconnect_channel: disconnect_channel_tx,
-            uplink: uplink_recv,
-            downlink: downlink_send,
-            disconnect: disconnect.clone(),
-        };
-        tokio::spawn(async move {
-                if let Err(e) = thread.run(connection_initialized_send).await {
-                    thread
-                        .update_status(ConnectionStatus::Disconnected(format!(
-                            "Connection error: {}",
-                            e
-                        )))
-                        .await;
+        let conn_disconnect = disconnect.clone();
+        let conn_status = status.clone();
+
+        tokio::task::spawn_blocking(move || {
+
+                // Switch the Crazyflie into USB communication mode
+                match usb_handle_ctrl.write_control(64, 0x01,  0x01, 0x01, &[], Duration::from_secs(1)) {
+                  Ok(_) => debug!("Switched to USB communication mode"),
+                  Err(e) => {
+                    error!("Error switching to USB communication mode: {:?}", e);
+                    return
+                  }
                 }
-                drop(thread.disconnect_channel);
+
+                let inner_status = conn_status.clone();
+                tokio::runtime::Handle::current().block_on(async move {
+                  let mut status = inner_status.lock().await;
+                  *status = ConnectionStatus::Connected;
+                });
+
+                connection_initialized_send.send(()).unwrap();
+
+                let thread_handle = std::thread::spawn::<_, Result<_>>(move || {
+                    info!("Communication thread started");
+                    loop {
+                      let mut buf = vec![0; 64];
+                      match usb_handle.read_bulk(0x81, &mut buf, Duration::from_millis(20)) {
+                        Ok(n) => {
+                          if n > 0 {
+                            let packet = buf[0..n].to_vec();
+                            downlink_send.send(packet)?;
+                          }
+                        },
+                        Err(rusb::Error::Timeout) => {},
+                        Err(e) => {
+                          warn!("Downlink thread error: {:?}", e);
+                          return Err(e.into());
+                        }
+                      }
+
+                      while !uplink_recv.is_empty() {
+                        let packet = uplink_recv.recv()?;
+                        match usb_handle.write_bulk(0x01, &packet, Duration::from_millis(100)) {
+                          Ok(_) => {},
+                          Err(e) => {
+                            warn!("Uplink thread error: {:?}", e);
+                            return Err(e.into());
+                          }
+                      }
+                    }
+
+                    // If the connection object has been dropped, leave the thread
+                    if conn_disconnect.load(Relaxed) {
+                      debug!("Disconnect requested, leaving connection loop.");
+                      return Ok(());
+                    }
+                  }
+                });
+
+                let disconnect_message = match thread_handle.join() {
+                  Ok(Ok(())) => format!("Connection closed"),
+                  Ok(Err(e)) => {
+                    error!("Connection thread error: {:?}", e);
+                    format!("USB error: {:?}", e)
+                  },
+                  Err(e) => {
+                    error!("Connection thread panicked: {:?}", e);
+                    format!("Connection thread panicked: {:?}", e)
+                  }
+                };
+
+                let inner_status = conn_status.clone();
+                tokio::runtime::Handle::current().block_on(async move {
+                  let mut status = inner_status.lock().await;
+                  *status = ConnectionStatus::Disconnected(disconnect_message)
+                });
+                
+                // Best effort, do not care if the other side is dropped
+                let _ =  disconnect_channel_tx.send(());
+
+                match usb_handle_ctrl.write_control(64, 0x01,  0x01, 0x00, &[], Duration::from_secs(1)) {
+                  Ok(_) => debug!("Switched back to CR mode in CF"),
+                  Err(e) => {
+                    error!("Error switching back to CR mode in CF: {:?}", e);
+                  }
+                }
             });
 
         // Wait for, either, the connection being established or failed initialization
@@ -180,71 +264,5 @@ impl CrazyflieUSBConnection {
 impl Drop for CrazyflieUSBConnection {
     fn drop(&mut self) {
         self.disconnect.store(true, Relaxed);
-    }
-}
-
-struct ConnectionThread {
-    usb_handle: DeviceHandle<GlobalContext>,
-    status: Arc<Mutex<ConnectionStatus>>,
-    disconnect_channel: flume::Sender<()>,
-    uplink: flume::Receiver<Vec<u8>>,
-    downlink: flume::Sender<Vec<u8>>,
-    disconnect: Arc<AtomicBool>,
-}
-
-impl ConnectionThread {
-    async fn update_status(&self, new_status: ConnectionStatus) {
-        debug!("New status: {:?}", &new_status);
-        let mut status = self.status.lock().await;
-        *status = new_status;
-    }
-
-    async fn run(&mut self, connection_initialized: oneshot::Sender<()>) -> Result<()> {
-        info!("Connecting to USB device");
-
-        self.usb_handle.write_control(64, 0x01,  0x01, 0x01, &[], Duration::from_secs(1))?;
-
-        self.update_status(ConnectionStatus::Connected).await;
-        connection_initialized.send(()).unwrap();
-
-        let mut buf = [0u8; 64];
-
-        loop {
-          match self.usb_handle.read_bulk(0x81, &mut buf, Duration::from_millis(20)) {
-            Ok(n) => {
-              if n > 0 {
-                let packet = buf[0..n].to_vec();
-                self.downlink.send_async(packet).await?;
-              }
-            },
-            Err(rusb::Error::Timeout) => {
-              continue;
-            },
-            Err(e) => {
-              warn!("Error: {:?}", e);
-              self.update_status(ConnectionStatus::Disconnected(
-                format!("Connection error: {:?}", e).to_string(),
-              ))
-              .await;
-              return Ok(());          
-            }
-          }
- 
-          if self.uplink.len() > 0 {
-            let packet = self.uplink.recv_async().await?;
-            self.usb_handle.write_bulk(0x01, &packet, Duration::from_millis(20))?;
-          }
-
-          // If the connection object has been dropped, leave the thread
-          if self.disconnect.load(Relaxed) {
-            debug!("Disconnect requested, leaving connection loop.");
-            self.usb_handle.write_control(64, 0x01,  0x01, 0x00, &[], Duration::from_secs(1))?;
-            self.update_status(ConnectionStatus::Disconnected(
-                "Connection closed".to_owned(),
-            ))
-            .await;
-            return Ok(());
-          }
-        }
     }
 }
