@@ -167,12 +167,6 @@ impl CrazyradioConnection {
         }
     }
 
-    /// Close the connection and wait for the connection task to stop.
-    ///
-    /// The connection can also be closed by simply dropping the connection object.
-    /// Though, if the connection task is currently processing a packet, it will continue running
-    /// until the current packet has been processed. This function will wait for any ongoing packet
-    /// to be processed and for the communication task to stop.
     async fn close(&self) {
         self.disconnect.store(true, Relaxed);
         let _ = self.disconnect_channel.recv_async().await;
@@ -183,26 +177,16 @@ impl CrazyradioConnection {
         self.status.lock().await.clone()
     }
 
-    /// Block until the connection is dropped. The `status()` function can be used to get the reason
-    /// for the disconnection.
     async fn wait_disconnect(&self) {
         // The channel will return an error when the other side, in the connection thread, is dropped
         let _ = self.disconnect_channel.recv_async().await;
     }
 
-    /// Send a packet to the connected Crazyflie
-    ///
-    /// This fundtion can return an error if the connection task is not active anymore.
-    /// This can happen if the Crazyflie is disconnected due to a timeout
     async fn send_packet(&self, packet: Packet) -> Result<()> {
         self.uplink.send_async(packet.into()).await?;
         Ok(())
     }
 
-    /// Receive a packet from the connected Crazyflie
-    ///
-    /// This fundtion can return an error if the connection task is not active anymore.
-    /// This can happen if the Crazyflie is disconnected due to a timeout
     async fn recv_packet(&self) -> Result<Packet> {
         let packet = self.downlink.recv_async().await?;
         Ok(packet.into())

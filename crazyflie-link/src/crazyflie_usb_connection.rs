@@ -12,12 +12,17 @@ use async_trait::async_trait;
 use rusb::{DeviceHandle, DeviceList, GlobalContext};
 use std::time::Duration;
 
-/// Link connection
+/// A USB connection to a Crazyflie
 pub struct CrazyflieUSBConnection {
+    /// Holds the current connection status
     status: Arc<Mutex<ConnectionStatus>>,
+    /// Channel to send messages from the host to the Crazyflie
     uplink: flume::Sender<Vec<u8>>,
+    /// Channel to receive messages from the Crazyflie to the host
     downlink: flume::Receiver<Vec<u8>>,
+    /// Channel to signal the waiting callers that the connection has been closed
     disconnect_channel: flume::Receiver<()>,
+    /// Flag to signal the user requested disconnection
     disconnect: Arc<AtomicBool>
 }
 
@@ -168,6 +173,7 @@ impl CrazyflieUSBConnection {
                 // Best effort, do not care if the other side is dropped
                 let _ =  disconnect_channel_tx.send(());
 
+                // Switch the Crazyflie back into Crazyradio mode
                 match usb_handle_ctrl.write_control(64, 0x01,  0x01, 0x00, &[], Duration::from_secs(1)) {
                   Ok(_) => debug!("Switched back to CR mode in CF"),
                   Err(e) => {
