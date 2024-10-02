@@ -6,16 +6,13 @@
 use crate::connection::Connection;
 use crate::connection::ConnectionTrait;
 use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
-use crate::crazyradio::Channel;
 use crate::crazyradio::SharedCrazyradio;
 use crate::crazyradio_connection::CrazyradioConnection;
 use crate::error::{Error, Result};
 use futures_util::lock::Mutex;
 
-use rusb::DeviceList;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
-use std::time::Duration;
 
 /// Context for the link connections
 pub struct LinkContext {
