@@ -109,6 +109,49 @@ impl CrazyradioConnection {
         })
     }
 
+    pub(crate) async fn scan(link_context: &LinkContext, address: [u8; 5]) -> Result<Vec<String>> {
+        let channels = match link_context.get_radio(0).await {
+            Ok(radio) => {
+                radio
+                    .scan_async(
+                        Channel::from_number(0)?,
+                        Channel::from_number(125)?,
+                        address,
+                        vec![0xff],
+                    )
+                    .await?
+            }
+            Err(_) => Vec::new(),
+        };
+
+        Ok(channels
+            .iter()
+            .map(|channel| {
+                let channel: u8 = (*channel).into();
+                let address = hex::encode(address.to_vec()).to_uppercase();
+                format!("radio://0/{}/2M/{}", channel, address)
+            })
+            .collect())
+    }
+
+    pub(crate) async fn scan_selected(
+        link_context: &LinkContext,
+        uris: Vec<&str>,
+    ) -> Result<Vec<String>> {
+        let mut found = Vec::new();
+        for uri in uris {
+            let (radio_nth, channel, address, _) = Self::parse_uri(uri)?;
+            let radio = link_context.get_radio(radio_nth).await?;
+            let (ack, _) = radio
+                .send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF])
+                .await?;
+            if ack.received {
+                found.push(format!("{}{}", uri, "?safelink=0&ackfilter=0"));
+            }
+        }
+        Ok(found)
+    }
+
     fn parse_uri(uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags)> {
         let uri = Url::parse(uri)?;
 

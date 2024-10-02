@@ -193,6 +193,51 @@ impl CrazyflieUSBConnection {
         })
     }
 
+    pub(crate) async fn scan() -> Result<Vec<String>> {
+        let found = tokio::task::spawn_blocking(|| {
+            let mut found = Vec::new();
+            for device in DeviceList::new()?.iter() {
+                let device_desc = match device.device_descriptor() {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                };
+
+                if device_desc.vendor_id() == 0x0483 && device_desc.product_id() == 0x5740 {
+                    let timeout = Duration::from_secs(1);
+                    let handle = match device.open() {
+                        Ok(d) => d,
+                        Err(_) => continue,
+                    };
+
+                    let language = match handle.read_languages(timeout).unwrap_or_default().first()
+                    {
+                        Some(l) => *l,
+                        None => continue,
+                    };
+
+                    let serial =
+                        handle.read_serial_number_string(language, &device_desc, timeout)?;
+
+                    found.push(format!("usb://{}", serial));
+                }
+            }
+            Result::<_>::Ok(found)
+        })
+        .await
+        .unwrap()?;
+
+        Ok(found)
+    }
+
+    pub(crate) async fn scan_selected(uris: Vec<&str>) -> Result<Vec<String>> {
+        let found = Self::scan().await?;
+
+        Ok(found
+            .into_iter()
+            .filter(|uri| uris.iter().any(|u| uri.contains(u)))
+            .collect())
+    }
+
     fn parse_uri(uri: &str) -> Result<String> {
         let uri = Url::parse(uri)?;
 
