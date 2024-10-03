@@ -7,7 +7,7 @@ description = "Crazyflie link"
 readme = "README.md"
 repository = "https://github.com/bitcraze/crazyflie-link-rs"
 license = "MIT OR Apache-2.0"
-keywords = ["nrf24", "crazyflie", "webusb", "wasm"]
+keywords = ["crazyflie",]
 categories = ["hardware-support"]
 exclude = [
     ".github/*"
