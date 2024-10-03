@@ -1,8 +1,8 @@
 [package]
 name = "crazyflie-link"
-version = "0.2.2"
-authors = ["Arnaud Taffanel <arnaud@bitcraze.io>"]
-edition = "2018"
+version = "0.3.0"
+authors = ["Arnaud Taffanel <arnaud@bitcraze.io>", "Marcus Eliasson <marcus@bitcraze.io>"]
+edition = "2021"
 description = "Crazyflie link"
 readme = "README.md"
 repository = "https://github.com/bitcraze/crazyflie-link-rs"
@@ -15,9 +15,9 @@ exclude = [
 
 
 [dependencies]
-bitflags = "1.0"
+bitflags = "2.6.0"
 crazyradio = { version="0.3.0", features = ["shared_radio", "async"]}
-flume = "0.10"
+flume = "0.11.0"
 log = "0.4"
 rand = "0.8"
 thiserror = "1"

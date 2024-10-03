@@ -2,7 +2,7 @@
 name = "cflinkrs"
 version = "0.1.0"
 authors = ["Arnaud Taffanel <arnaud@bitcraze.io>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "cflinkrs"
