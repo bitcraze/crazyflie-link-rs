@@ -3,31 +3,31 @@
 //! The Link context keeps track of the radio dongles opened and used by connections.
 //! It also keeps track of the async executor
 
-use crate::connection::ConnectionFlags;
-use crate::crazyradio::Channel;
+use crate::connection::Connection;
+use crate::connection::ConnectionTrait;
+use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
 use crate::crazyradio::SharedCrazyradio;
+use crate::crazyradio_connection::CrazyradioConnection;
 use crate::error::{Error, Result};
-use crate::Connection;
 use futures_util::lock::Mutex;
-use hex::FromHex;
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
-use url::Url;
 
 /// Context for the link connections
 pub struct LinkContext {
-    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>
+    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
 }
 
 impl LinkContext {
     /// Create a new link context
     pub fn new() -> Self {
         Self {
-            radios: Mutex::new(BTreeMap::new())
+            radios: Mutex::new(BTreeMap::new()),
         }
     }
 
-    async fn get_radio(&self, radio_nth: usize) -> Result<Arc<SharedCrazyradio>> {
+    pub(crate) async fn get_radio(&self, radio_nth: usize) -> Result<Arc<SharedCrazyradio>> {
         let mut radios = self.radios.lock().await;
 
         radios.entry(radio_nth).or_insert_with(Weak::new);
@@ -45,52 +45,6 @@ impl LinkContext {
         Ok(radio)
     }
 
-    fn parse_uri(&self, uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags)> {
-        let uri = Url::parse(uri)?;
-
-        if uri.scheme() != "radio" {
-            return Err(Error::InvalidUri);
-        }
-
-        let radio: usize = uri.domain().ok_or(Error::InvalidUri)?.parse()?;
-
-        let path: Vec<&str> = uri.path_segments().ok_or(Error::InvalidUri)?.collect();
-        if path.len() != 3 {
-            return Err(Error::InvalidUri);
-        }
-        let channel = Channel::from_number(path[0].parse()?)?;
-        let _rate = path[1];
-        let addr_str = path[2];
-
-        if addr_str.len() > 10 {
-            return Err(Error::InvalidUri);
-        }
-
-        let address = match <[u8; 5]>::from_hex(format!("{:0>10}", addr_str)) {
-            Ok(address) => address,
-            Err(_) => return Err(Error::InvalidUri),
-        };
-
-        let mut flags = ConnectionFlags::SAFELINK | ConnectionFlags::ACKFILTER;
-        for (key, value) in uri.query_pairs() {
-            match key.as_ref() {
-                "safelink" => {
-                    if value == "0" {
-                        flags.remove(ConnectionFlags::SAFELINK);
-                    }
-                }
-                "ackfilter" => {
-                    if value == "0" {
-                        flags.remove(ConnectionFlags::ACKFILTER);
-                    }
-                }
-                _ => continue,
-            };
-        }
-
-        Ok((radio, channel, address, flags))
-    }
-
     /// Scan for Crazyflies at some given address
     ///
     /// This function will send a packet to every channels and look for an acknowledgement in return.
@@ -99,24 +53,10 @@ impl LinkContext {
     ///
     /// It returns a list of URIs that can be passed to the [LinkContext::open_link()] function.
     pub async fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
-        let channels = self
-            .get_radio(0)
-            .await?
-            .scan_async(
-                Channel::from_number(0)?,
-                Channel::from_number(125)?,
-                address,
-                vec![0xff],
-            )
-            .await?;
-
         let mut found = Vec::new();
 
-        for channel in channels {
-            let channel: u8 = channel.into();
-            let address = hex::encode(address.to_vec()).to_uppercase();
-            found.push(format!("radio://0/{}/2M/{}", channel, address));
-        }
+        found.extend(CrazyradioConnection::scan(self, address).await?);
+        found.extend(CrazyflieUSBConnection::scan().await?);
 
         Ok(found)
     }
@@ -128,16 +68,10 @@ impl LinkContext {
     /// Returns the list of URIs that acknowledged
     pub async fn scan_selected(&self, uris: Vec<&str>) -> Result<Vec<String>> {
         let mut found = Vec::new();
-        for uri in uris {
-            let (radio_nth, channel, address, _) = self.parse_uri(uri)?;
-            let radio = self.get_radio(radio_nth).await?;
-            let (ack, _) = radio
-                .send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF])
-                .await?;
-            if ack.received {
-                found.push(format!("{}{}", uri, "?safelink=0&ackfilter=0"));
-            }
-        }
+
+        found.extend(CrazyradioConnection::scan_selected(self, uris.clone()).await?);
+        found.extend(CrazyflieUSBConnection::scan_selected(uris).await?);
+
         Ok(found)
     }
 
@@ -145,10 +79,17 @@ impl LinkContext {
     ///
     /// If successful, the link [Connection] is returned.
     pub async fn open_link(&self, uri: &str) -> Result<Connection> {
-        let (radio_nth, channel, address, flags) = self.parse_uri(uri)?;
+        let connection: Option<Box<dyn ConnectionTrait + Send + Sync>> =
+            if let Some(connection) = CrazyradioConnection::open(self, uri).await? {
+                Some(Box::new(connection))
+            } else if let Some(connection) = CrazyflieUSBConnection::open(self, uri).await? {
+                Some(Box::new(connection))
+            } else {
+                None
+            };
 
-        let radio = self.get_radio(radio_nth).await?;
+        let internal_connection = connection.ok_or(Error::InvalidUri)?;
 
-        Connection::new(radio, channel, address, flags).await
+        Ok(Connection::new(internal_connection))
     }
 }

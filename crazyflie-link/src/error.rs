@@ -5,6 +5,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("Invalid URI scheme")]
+    InvalidUriScheme,
     #[error("Invalid URI")]
     InvalidUri,
     #[error("Timeout")]
@@ -15,6 +17,8 @@ pub enum Error {
     ChannelRecvError(flume::RecvError),
     #[error("Threading error: {0:?}")]
     ChannelSendError(flume::SendError<Vec<u8>>),
+    #[error("USB error: {0:?}")]
+    USBSubsystemError(rusb::Error),
 }
 
 impl From<crate::crazyradio::Error> for Error {
@@ -50,5 +54,11 @@ impl From<ParseIntError> for Error {
 impl From<RecvTimeoutError> for Error {
     fn from(_error: RecvTimeoutError) -> Self {
         Error::Timeout
+    }
+}
+
+impl From<rusb::Error> for Error {
+    fn from(error: rusb::Error) -> Self {
+        Error::USBSubsystemError(error)
     }
 }
