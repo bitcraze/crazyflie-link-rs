@@ -67,8 +67,8 @@ impl CrazyradioConnection {
         let (disconnect_channel_tx, disconnect_channel_rx) = flume::bounded(0);
         let disconnect = Arc::new(AtomicBool::new(false));
 
-        let (uplink_send, uplink_recv) = flume::bounded(1000);
-        let (downlink_send, downlink_recv) = flume::bounded(1000);
+        let (uplink_send, uplink_recv) = flume::unbounded();
+        let (downlink_send, downlink_recv) = flume::unbounded();
 
         let (connection_initialized_send, connection_initialized) = oneshot::channel();
 
