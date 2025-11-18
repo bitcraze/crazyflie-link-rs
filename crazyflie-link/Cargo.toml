@@ -33,4 +33,5 @@ async-trait = "0.1.83"
 [dev-dependencies]
 anyhow = "1"
 byteorder = "1.2.2"
+indicatif = { version = "0.18.3", features = ["tokio"] }
 structopt = "0.3"
