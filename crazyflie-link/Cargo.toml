@@ -30,6 +30,10 @@ futures-channel = "0.3"
 rusb = "0.9.4"
 async-trait = "0.1.83"
 
+[features]
+default = []
+wireshark = ["crazyradio/wireshark"]
+
 [dev-dependencies]
 anyhow = "1"
 byteorder = "1.2.2"

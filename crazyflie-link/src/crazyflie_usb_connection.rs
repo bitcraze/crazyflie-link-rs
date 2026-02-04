@@ -122,6 +122,16 @@ impl CrazyflieUSBConnection {
                         Ok(n) => {
                             if n > 0 {
                                 let packet = buf[0..n].to_vec();
+                                // Capture RX packet
+                                #[cfg(feature = "wireshark")]
+                                crate::capture::send_packet(
+                                    crate::capture::LINK_TYPE_USB,
+                                    crate::capture::DIRECTION_RX,
+                                    &[],  // No address for USB
+                                    0,    // No channel for USB
+                                    0,    // Device ID
+                                    &packet,
+                                );
                                 downlink_send.send(packet)?;
                             }
                         }
@@ -134,6 +144,16 @@ impl CrazyflieUSBConnection {
 
                     while !uplink_recv.is_empty() {
                         let packet = uplink_recv.recv()?;
+                        // Capture TX packet
+                        #[cfg(feature = "wireshark")]
+                        crate::capture::send_packet(
+                            crate::capture::LINK_TYPE_USB,
+                            crate::capture::DIRECTION_TX,
+                            &[],  // No address for USB
+                            0,    // No channel for USB
+                            0,    // Device ID
+                            &packet,
+                        );
                         match usb_handle.write_bulk(0x01, &packet, Duration::from_millis(100)) {
                             Ok(_) => {}
                             Err(e) => {

@@ -41,6 +41,9 @@ mod crazyradio_connection;
 mod error;
 mod packet;
 
+#[cfg(feature = "wireshark")]
+pub mod capture;
+
 pub(crate) use crazyradio;
 
 pub use connection::{Connection, ConnectionStatus};
