@@ -57,7 +57,7 @@ impl CrazyradioConnection {
     }
 
     async fn new(
-        radio: Arc<SharedCrazyradio>,
+        radio: SharedCrazyradio,
         channel: Channel,
         address: [u8; 5],
         flags: ConnectionFlags,
@@ -111,7 +111,7 @@ impl CrazyradioConnection {
 
     pub(crate) async fn scan(link_context: &LinkContext, address: [u8; 5]) -> Result<Vec<String>> {
         let channels = match link_context.get_radio(0).await {
-            Ok(radio) => {
+            Ok(mut radio) => {
                 radio
                     .scan_async(
                         Channel::from_number(0)?,
@@ -141,7 +141,7 @@ impl CrazyradioConnection {
         let mut found = Vec::new();
         for uri in uris {
             let (radio_nth, channel, address, _) = Self::parse_uri(uri)?;
-            let radio = link_context.get_radio(radio_nth).await?;
+            let mut radio = link_context.get_radio(radio_nth).await?;
             let (ack, _) = radio
                 .send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF])
                 .await?;
@@ -244,7 +244,7 @@ impl Drop for CrazyradioConnection {
 }
 
 struct ConnectionThread {
-    radio: Arc<SharedCrazyradio>,
+    radio: SharedCrazyradio,
     status: Arc<Mutex<ConnectionStatus>>,
     disconnect_channel: flume::Sender<()>,
     safelink_up_ctr: u8,

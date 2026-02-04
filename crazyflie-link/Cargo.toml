@@ -1,6 +1,6 @@
 [package]
 name = "crazyflie-link"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Arnaud Taffanel <arnaud@bitcraze.io>", "Marcus Eliasson <marcus@bitcraze.io>"]
 edition = "2021"
 description = "Crazyflie link"
@@ -16,7 +16,7 @@ exclude = [
 
 [dependencies]
 bitflags = "2.6.0"
-crazyradio = { version="0.3.0", features = ["shared_radio", "async"]}
+crazyradio = { git = "https://github.com/bitcraze/crazyradio-rs" , branch = "ataffanel/exclusive-shared-radio", features = ["shared_radio", "async"]} # { version="0.3.0", features = ["shared_radio", "async"]}
 flume = "0.11.0"
 log = "0.4"
 rand = "0.8"
