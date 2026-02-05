@@ -47,3 +47,4 @@ pub use connection::{Connection, ConnectionStatus};
 pub use context::LinkContext;
 pub use error::Error;
 pub use packet::Packet;
+pub use crazyradio::SharedCrazyradio;

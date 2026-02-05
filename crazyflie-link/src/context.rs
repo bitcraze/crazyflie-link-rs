@@ -6,17 +6,16 @@
 use crate::connection::Connection;
 use crate::connection::ConnectionTrait;
 use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
-use crate::crazyradio::SharedCrazyradio;
+use crate::crazyradio::{SharedCrazyradio, WeakSharedCrazyradio};
 use crate::crazyradio_connection::CrazyradioConnection;
 use crate::error::{Error, Result};
 use futures_util::lock::Mutex;
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Weak};
 
 /// Context for the link connections
 pub struct LinkContext {
-    radios: Mutex<BTreeMap<usize, Weak<SharedCrazyradio>>>,
+    radios: Mutex<BTreeMap<usize, WeakSharedCrazyradio>>,
 }
 
 impl LinkContext {
@@ -27,17 +26,23 @@ impl LinkContext {
         }
     }
 
-    pub(crate) async fn get_radio(&self, radio_nth: usize) -> Result<Arc<SharedCrazyradio>> {
+    /// Get SharedCrazyradio for the given radio index
+    /// 
+    /// If the radio is already opened, a new instance of SharedCrazyradio for this radio is returned.
+    /// Otherwise, the radio is opened and a SharedCrazyradio instance using it is returned.
+    /// 
+    /// Returns an error if the radio cannot be opened.
+    pub async fn get_radio(&self, radio_nth: usize) -> Result<SharedCrazyradio> {
         let mut radios = self.radios.lock().await;
 
-        radios.entry(radio_nth).or_insert_with(Weak::new);
+        radios.entry(radio_nth).or_insert_with(WeakSharedCrazyradio::default);
 
-        let radio = match Weak::upgrade(&radios[&radio_nth]) {
+        let radio = match radios[&radio_nth].upgrade() {
             Some(radio) => radio,
             None => {
                 let new_radio = crate::crazyradio::Crazyradio::open_nth_async(radio_nth).await?;
-                let new_radio = Arc::new(SharedCrazyradio::new(new_radio));
-                radios.insert(radio_nth, Arc::downgrade(&new_radio));
+                let new_radio = SharedCrazyradio::new(new_radio);
+                radios.insert(radio_nth, new_radio.downgrade());
 
                 new_radio
             }
