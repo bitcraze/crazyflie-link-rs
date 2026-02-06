@@ -33,7 +33,7 @@ impl CrazyflieUSBConnection {
     ) -> Result<Option<CrazyflieUSBConnection>> {
         let serial = Self::parse_uri(uri)?;
 
-        let (_device_desc, handle, handle_ctrl) = tokio::task::spawn_blocking(move || {
+        let (_device_desc, handle, handle_ctrl, serial) = tokio::task::spawn_blocking(move || {
             for device in DeviceList::new()?.iter() {
                 let device_desc = match device.device_descriptor() {
                     Ok(d) => d,
@@ -65,7 +65,7 @@ impl CrazyflieUSBConnection {
                         handle.read_serial_number_string(language, &device_desc, timeout)?;
 
                     if detected_serial == serial {
-                        return Ok((device_desc, handle, handle_ctrl));
+                        return Ok((device_desc, handle, handle_ctrl, detected_serial));
                     }
                 }
             }
@@ -74,7 +74,7 @@ impl CrazyflieUSBConnection {
         .await
         .unwrap()?;
 
-        let connection = CrazyflieUSBConnection::new(handle, handle_ctrl).await?;
+        let connection = CrazyflieUSBConnection::new(handle, handle_ctrl, serial).await?;
 
         Ok(Some(connection))
     }
@@ -82,6 +82,7 @@ impl CrazyflieUSBConnection {
     async fn new(
         usb_handle: DeviceHandle<GlobalContext>,
         usb_handle_ctrl: DeviceHandle<GlobalContext>,
+        #[allow(unused_variables)] serial: String,
     ) -> Result<CrazyflieUSBConnection> {
         let status = Arc::new(Mutex::new(ConnectionStatus::Connecting));
 
@@ -96,7 +97,12 @@ impl CrazyflieUSBConnection {
         let conn_disconnect = disconnect.clone();
         let conn_status = status.clone();
 
+        #[cfg(feature = "wireshark")]
+        let capture_serial = serial;
+
         tokio::task::spawn_blocking(move || {
+            #[cfg(feature = "wireshark")]
+            let capture_serial = capture_serial;
             // Switch the Crazyflie into USB communication mode
             match usb_handle_ctrl.write_control(64, 0x01, 0x01, 0x01, &[], Duration::from_secs(1)) {
                 Ok(_) => debug!("Switched to USB communication mode"),
@@ -114,6 +120,9 @@ impl CrazyflieUSBConnection {
 
             connection_initialized_send.send(()).unwrap();
 
+            #[cfg(feature = "wireshark")]
+            let capture_serial = capture_serial;
+
             let thread_handle = std::thread::spawn::<_, Result<_>>(move || {
                 info!("Communication thread started");
                 loop {
@@ -129,7 +138,7 @@ impl CrazyflieUSBConnection {
                                     crate::capture::DIRECTION_RX,
                                     &[],  // No address for USB
                                     0,    // No channel for USB
-                                    0,    // Device ID
+                                    &capture_serial,
                                     &packet,
                                 );
                                 downlink_send.send(packet)?;
@@ -151,7 +160,7 @@ impl CrazyflieUSBConnection {
                             crate::capture::DIRECTION_TX,
                             &[],  // No address for USB
                             0,    // No channel for USB
-                            0,    // Device ID
+                            &capture_serial,
                             &packet,
                         );
                         match usb_handle.write_bulk(0x01, &packet, Duration::from_millis(100)) {

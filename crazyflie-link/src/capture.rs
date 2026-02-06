@@ -57,14 +57,14 @@ pub fn init() {
     }
 
     // Register callback with crazyradio crate
-    crazyradio::capture::set_callback(Box::new(|direction, channel, address, radio_index, data| {
+    crazyradio::capture::set_callback(Box::new(|event| {
         send_packet(
             LINK_TYPE_RADIO,
-            direction,
-            address,
-            channel,
-            radio_index,
-            data,
+            event.direction,
+            event.address,
+            event.channel,
+            event.serial,
+            event.data,
         );
     }));
 }
@@ -86,14 +86,14 @@ pub fn is_available() -> bool {
 /// * `direction` - DIRECTION_TX or DIRECTION_RX
 /// * `address` - Device address (5 bytes for radio, up to 12 for USB)
 /// * `channel` - Radio channel (0 for USB)
-/// * `devid` - Device/radio index
+/// * `serial` - Device/radio serial number (up to 16 bytes)
 /// * `data` - CRTP packet data (header + payload)
 pub fn send_packet(
     link_type: u8,
     direction: u8,
     address: &[u8],
     channel: u8,
-    devid: u8,
+    serial: &str,
     data: &[u8],
 ) {
     let socket = match CAPTURE_SOCKET.get() {
@@ -118,8 +118,8 @@ pub fn send_packet(
         .unwrap_or(0);
 
     // Build packet header:
-    // | link_type(1) | direction(1) | address(12) | channel(1) | devid(1) | timestamp(8) | len(2) |
-    let mut header = [0u8; 26];
+    // | link_type(1) | direction(1) | address(12) | channel(1) | serial(16) | timestamp(8) | len(2) |
+    let mut header = [0u8; 41];
     header[0] = link_type;
     header[1] = direction;
 
@@ -128,9 +128,14 @@ pub fn send_packet(
     header[2..2 + addr_len].copy_from_slice(&address[..addr_len]);
 
     header[14] = channel;
-    header[15] = devid;
-    header[16..24].copy_from_slice(&timestamp_us.to_le_bytes());
-    header[24..26].copy_from_slice(&(data.len() as u16).to_le_bytes());
+
+    // Copy serial (pad to 16 bytes)
+    let serial_bytes = serial.as_bytes();
+    let serial_len = serial_bytes.len().min(16);
+    header[15..15 + serial_len].copy_from_slice(&serial_bytes[..serial_len]);
+
+    header[31..39].copy_from_slice(&timestamp_us.to_le_bytes());
+    header[39..41].copy_from_slice(&(data.len() as u16).to_le_bytes());
 
     // Write header and data
     if stream.write_all(&header).is_err() || stream.write_all(data).is_err() {
