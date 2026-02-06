@@ -28,10 +28,10 @@ impl LinkContext {
 
     /// Get SharedCrazyradio for the given radio index
     /// 
-    /// If the radio is not already opened, a new instance of SharedCrazyradio for this radio is returned.
+    /// If the radio is already opened, a new instance of SharedCrazyradio for this radio is returned.
     /// Otherwise, the radio is opened and a SharedCrazyradio instance using it is returned.
     /// 
-    /// Returns and error if the radio cannot be opened.
+    /// Returns an error if the radio cannot be opened.
     pub async fn get_radio(&self, radio_nth: usize) -> Result<SharedCrazyradio> {
         let mut radios = self.radios.lock().await;
 
