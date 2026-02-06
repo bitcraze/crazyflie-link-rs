@@ -9,6 +9,10 @@ bidirectional link.
 
 This crate API is async, it is implemented using the Tokio executor.
 
+## Cargo features
+
+- **wireshark** - Enable packet capture to Wireshark via Unix socket (Unix only)
+
 ## Limitations
 
 This crate currently only supports 2Mbit/s datarate over Crazyradio.

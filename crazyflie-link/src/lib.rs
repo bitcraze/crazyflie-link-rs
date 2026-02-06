@@ -30,6 +30,9 @@
 //! # }
 //! ```
 //!
+//! ## Cargo features
+//!
+//! - **wireshark** - Enable packet capture to Wireshark via Unix socket (Unix only)
 
 #[macro_use]
 extern crate bitflags;
