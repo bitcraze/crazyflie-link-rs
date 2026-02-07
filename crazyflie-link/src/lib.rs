@@ -32,7 +32,31 @@
 //!
 //! ## Cargo features
 //!
-//! - **wireshark** - Enable packet capture to Wireshark via Unix socket (Unix only)
+//! - **packet_capture** - Enable packet capture via Unix socket (Unix only)
+//!
+//! ## Packet Capture
+//!
+//! When the `packet_capture` feature is enabled, CRTP packets can be captured and sent
+//! to an external application for analysis. Call [`capture::init()`] at startup to
+//! connect to the capture socket.
+//!
+//! The capture uses a Unix socket at `/tmp/crazyflie-capture.sock`. To view packets in
+//! Wireshark, use the extcap plugin from <https://github.com/evoggy/wireshark-crazyflie>.
+//!
+//! ### Capture Format
+//!
+//! Each captured packet is sent with a 41-byte header followed by the CRTP packet data:
+//!
+//! | Offset | Size | Field       | Description                              |
+//! |--------|------|-------------|------------------------------------------|
+//! | 0      | 1    | link_type   | 1 = Radio, 2 = USB                       |
+//! | 1      | 1    | direction   | 0 = TX (to Crazyflie), 1 = RX (from CF)  |
+//! | 2      | 12   | address     | Radio address (5 bytes) or empty for USB |
+//! | 14     | 1    | channel     | Radio channel (0 for USB)                |
+//! | 15     | 16   | serial      | Radio/device serial number               |
+//! | 31     | 8    | timestamp   | Microseconds since Unix epoch (LE)       |
+//! | 39     | 2    | length      | CRTP packet length (LE)                  |
+//! | 41     | N    | data        | CRTP packet (header + payload)           |
 
 #[macro_use]
 extern crate bitflags;
@@ -44,7 +68,7 @@ mod crazyradio_connection;
 mod error;
 mod packet;
 
-#[cfg(feature = "wireshark")]
+#[cfg(feature = "packet_capture")]
 pub mod capture;
 
 pub(crate) use crazyradio;

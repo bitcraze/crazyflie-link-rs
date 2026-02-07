@@ -97,11 +97,11 @@ impl CrazyflieUSBConnection {
         let conn_disconnect = disconnect.clone();
         let conn_status = status.clone();
 
-        #[cfg(feature = "wireshark")]
+        #[cfg(feature = "packet_capture")]
         let capture_serial = serial;
 
         tokio::task::spawn_blocking(move || {
-            #[cfg(feature = "wireshark")]
+            #[cfg(feature = "packet_capture")]
             let capture_serial = capture_serial;
             // Switch the Crazyflie into USB communication mode
             match usb_handle_ctrl.write_control(64, 0x01, 0x01, 0x01, &[], Duration::from_secs(1)) {
@@ -120,7 +120,7 @@ impl CrazyflieUSBConnection {
 
             connection_initialized_send.send(()).unwrap();
 
-            #[cfg(feature = "wireshark")]
+            #[cfg(feature = "packet_capture")]
             let capture_serial = capture_serial;
 
             let thread_handle = std::thread::spawn::<_, Result<_>>(move || {
@@ -132,7 +132,7 @@ impl CrazyflieUSBConnection {
                             if n > 0 {
                                 let packet = buf[0..n].to_vec();
                                 // Capture RX packet
-                                #[cfg(feature = "wireshark")]
+                                #[cfg(feature = "packet_capture")]
                                 crate::capture::send_packet(
                                     crate::capture::LINK_TYPE_USB,
                                     crate::capture::DIRECTION_RX,
@@ -154,7 +154,7 @@ impl CrazyflieUSBConnection {
                     while !uplink_recv.is_empty() {
                         let packet = uplink_recv.recv()?;
                         // Capture TX packet
-                        #[cfg(feature = "wireshark")]
+                        #[cfg(feature = "packet_capture")]
                         crate::capture::send_packet(
                             crate::capture::LINK_TYPE_USB,
                             crate::capture::DIRECTION_TX,

@@ -11,7 +11,7 @@ This crate API is async, it is implemented using the Tokio executor.
 
 ## Cargo features
 
-- **wireshark** - Enable packet capture to Wireshark via Unix socket (Unix only)
+- **packet_capture** - Enable packet capture via Unix socket (Unix only)
 
 ## Limitations
 

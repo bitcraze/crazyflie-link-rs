@@ -32,7 +32,7 @@ async-trait = "0.1.83"
 
 [features]
 default = []
-wireshark = ["crazyradio/wireshark"]
+packet_capture = ["crazyradio/packet_capture"]
 
 [dev-dependencies]
 anyhow = "1"

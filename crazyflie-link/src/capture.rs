@@ -1,9 +1,14 @@
-//! Wireshark packet capture support
+//! Packet capture support
 //!
 //! This module provides functionality to capture CRTP packets and send them
-//! to a Wireshark extcap application via Unix socket.
+//! via Unix socket for analysis in Wireshark.
 //!
-//! Enable with the `wireshark` feature flag.
+//! Enable with the `packet_capture` feature flag and call [`init()`] at startup.
+//!
+//! To view captured packets in Wireshark, use the extcap plugin from
+//! <https://github.com/evoggy/wireshark-crazyflie>.
+//!
+//! See the crate-level documentation for the capture format specification.
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -11,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Unix socket path for connecting to the extcap
-const SOCKET_PATH: &str = "/tmp/crazyflie-wireshark.sock";
+const SOCKET_PATH: &str = "/tmp/crazyflie-capture.sock";
 
 /// Link type for radio connections
 pub const LINK_TYPE_RADIO: u8 = 1;
@@ -24,59 +29,38 @@ pub const DIRECTION_TX: u8 = 0;
 pub const DIRECTION_RX: u8 = 1;
 
 /// Global capture socket (lazily initialized)
-static CAPTURE_SOCKET: OnceLock<Mutex<Option<UnixStream>>> = OnceLock::new();
+static CAPTURE_SOCKET: OnceLock<Mutex<UnixStream>> = OnceLock::new();
 
 /// Initialize the capture connection
 ///
-/// Attempts to connect to the Wireshark extcap Unix socket.
-/// If the socket is not available (extcap not running), capture is silently disabled.
+/// Attempts to connect to the Unix socket. If the socket is not available the
+/// capture is silently disabled.
 ///
 /// This also registers a callback with the crazyradio crate to capture radio packets.
 pub fn init() {
-    let socket = CAPTURE_SOCKET.get_or_init(|| {
-        match UnixStream::connect(SOCKET_PATH) {
-            Ok(stream) => {
-                log::info!("Wireshark capture: connected to {}", SOCKET_PATH);
-                Mutex::new(Some(stream))
-            }
-            Err(e) => {
-                log::debug!("Wireshark capture: not available ({})", e);
-                Mutex::new(None)
-            }
-        }
-    });
+    if let Ok(stream) = UnixStream::connect(SOCKET_PATH) {
+        log::info!("Packet capture: connected to {}", SOCKET_PATH);
+        let _ = CAPTURE_SOCKET.set(Mutex::new(stream));
 
-    // If already initialized but disconnected, try to reconnect
-    if let Ok(mut guard) = socket.lock() {
-        if guard.is_none() {
-            if let Ok(stream) = UnixStream::connect(SOCKET_PATH) {
-                log::info!("Wireshark capture: reconnected to {}", SOCKET_PATH);
-                *guard = Some(stream);
-            }
-        }
+        // Only register callback if connected
+        crazyradio::capture::set_callback(Box::new(|event| {
+            send_packet(
+                LINK_TYPE_RADIO,
+                event.direction,
+                event.address,
+                event.channel,
+                event.serial,
+                event.data,
+            );
+        }));
+    } else {
+        log::debug!("Packet capture: not available");
     }
-
-    // Register callback with crazyradio crate
-    crazyradio::capture::set_callback(Box::new(|event| {
-        send_packet(
-            LINK_TYPE_RADIO,
-            event.direction,
-            event.address,
-            event.channel,
-            event.serial,
-            event.data,
-        );
-    }));
 }
 
 /// Check if capture is available
 pub fn is_available() -> bool {
-    if let Some(socket) = CAPTURE_SOCKET.get() {
-        if let Ok(guard) = socket.lock() {
-            return guard.is_some();
-        }
-    }
-    false
+    CAPTURE_SOCKET.get().is_some()
 }
 
 /// Send a captured packet to Wireshark
@@ -96,20 +80,8 @@ pub fn send_packet(
     serial: &str,
     data: &[u8],
 ) {
-    let socket = match CAPTURE_SOCKET.get() {
-        Some(s) => s,
-        None => return,
-    };
-
-    let mut guard = match socket.lock() {
-        Ok(g) => g,
-        Err(_) => return,
-    };
-
-    let stream = match guard.as_mut() {
-        Some(s) => s,
-        None => return,
-    };
+    let Some(socket) = CAPTURE_SOCKET.get() else { return };
+    let Ok(mut stream) = socket.lock() else { return };
 
     // Get timestamp in microseconds
     let timestamp_us = SystemTime::now()
@@ -137,10 +109,7 @@ pub fn send_packet(
     header[31..39].copy_from_slice(&timestamp_us.to_le_bytes());
     header[39..41].copy_from_slice(&(data.len() as u16).to_le_bytes());
 
-    // Write header and data
-    if stream.write_all(&header).is_err() || stream.write_all(data).is_err() {
-        // Connection lost, clear the socket
-        log::debug!("Wireshark capture: connection lost");
-        *guard = None;
-    }
+    // Write header and data, ignore errors
+    let _ = stream.write_all(&header);
+    let _ = stream.write_all(data);
 }
