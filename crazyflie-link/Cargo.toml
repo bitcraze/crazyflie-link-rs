@@ -1,6 +1,6 @@
 [package]
 name = "crazyflie-link"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Arnaud Taffanel <arnaud@bitcraze.io>", "Marcus Eliasson <marcus@bitcraze.io>"]
 edition = "2021"
 description = "Crazyflie link"
