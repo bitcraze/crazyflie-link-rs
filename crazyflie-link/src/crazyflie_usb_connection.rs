@@ -1,4 +1,4 @@
-use crate::connection::ConnectionTrait;
+use crate::connection::{ConnectionTrait, RadioLinkStatistics};
 use crate::error::{Error, Result};
 use crate::{ConnectionStatus, LinkContext, Packet};
 use async_trait::async_trait;
@@ -337,6 +337,10 @@ impl ConnectionTrait for CrazyflieUSBConnection {
     async fn recv_packet(&self) -> Result<Packet> {
         let packet = self.downlink.recv_async().await?;
         Ok(packet.into())
+    }
+
+    async fn link_statistics(&self) -> Option<RadioLinkStatistics> {
+        None
     }
 }
 
