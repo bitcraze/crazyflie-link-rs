@@ -31,8 +31,9 @@ pub struct RadioLinkStatistics {
     pub avg_retries: f32,
     /// Fraction of ACKs where the nRF24 power detector triggered (0.0 to 1.0)
     pub power_detector_rate: f32,
-    /// Average uplink RSSI reported by the Crazyflie firmware. `None` if no RSSI data was received.
-    pub uplink_rssi: Option<f32>,
+    /// Average RSSI in dBm measured by the radio dongle on received ACK packets.
+    /// `None` if the radio doesn't support RSSI.
+    pub rssi: Option<f32>,
 }
 
 // Describes the interface for a connection to a Crazyflie

@@ -56,17 +56,16 @@ impl StatsAccumulator {
         }
     }
 
-    fn record_ack(&mut self, retry: usize, power_detector: bool) {
+    fn record_ack(&mut self, retry: usize, power_detector: bool, rssi_dbm: Option<u8>) {
         self.acked_count += 1;
         self.total_retries += retry as u64;
         if power_detector {
             self.power_detector_count += 1;
         }
-    }
-
-    fn record_rssi(&mut self, rssi: u8) {
-        self.rssi_sum += rssi as u64;
-        self.rssi_count += 1;
+        if let Some(rssi) = rssi_dbm {
+            self.rssi_sum += rssi as u64;
+            self.rssi_count += 1;
+        }
     }
 
     fn record_received(&mut self) {
@@ -97,8 +96,8 @@ impl StatsAccumulator {
                 } else {
                     0.0
                 },
-                uplink_rssi: if self.rssi_count > 0 {
-                    Some(self.rssi_sum as f32 / self.rssi_count as f32)
+                rssi: if self.rssi_count > 0 {
+                    Some(-(self.rssi_sum as f32 / self.rssi_count as f32))
                 } else {
                     None
                 },
@@ -511,24 +510,13 @@ impl ConnectionThread {
                 let mut stats = self.stats.lock().await;
                 stats.record_send(is_data);
                 if ack.received {
-                    stats.record_ack(ack.retry, ack.power_detector);
+                    stats.record_ack(ack.retry, ack.power_detector, ack.rssi_dbm);
                 }
             }
 
             if ack.received {
                 last_pk_time = Instant::now();
                 needs_resend = false;
-
-                // Add some relaxation time if the Crazyflie has nothing to send back
-                // for a while
-
-                // Extract RSSI from out-of-band safelink packets before preprocessing
-                if safelink && ack_payload.len() > 2
-                    && ack_payload[0] & 0xF3 == 0xF3
-                    && ack_payload[1] == 0x01
-                {
-                    self.stats.lock().await.record_rssi(ack_payload[2]);
-                }
 
                 let should_handle = self.preprocess_ack(&mut ack_payload, safelink);
                 if should_handle {
