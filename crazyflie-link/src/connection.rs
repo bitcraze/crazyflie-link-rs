@@ -13,6 +13,29 @@ pub enum ConnectionStatus {
     Disconnected(String),
 }
 
+/// Radio link statistics snapshot
+///
+/// Contains metrics about the radio link quality collected over the last measurement window.
+/// Only available for radio connections (not USB).
+#[derive(Clone, Debug, Default)]
+pub struct RadioLinkStatistics {
+    /// ACK success rate (0.0 to 1.0). Ratio of acknowledged packets to total packets sent.
+    pub link_quality: f32,
+    /// Data packets sent per second (excludes null/keepalive packets)
+    pub uplink_rate: f32,
+    /// Packets received per second (non-empty ACK payloads)
+    pub downlink_rate: f32,
+    /// Total radio packets sent per second (data + null/keepalive packets)
+    pub radio_send_rate: f32,
+    /// Average number of retries per acknowledged packet (0 = first attempt always succeeds)
+    pub avg_retries: f32,
+    /// Fraction of ACKs where the nRF24 power detector triggered (0.0 to 1.0)
+    pub power_detector_rate: f32,
+    /// Average RSSI in dBm measured by the radio dongle on received ACK packets.
+    /// `None` if the radio doesn't support RSSI.
+    pub rssi: Option<f32>,
+}
+
 // Describes the interface for a connection to a Crazyflie
 #[async_trait]
 pub trait ConnectionTrait {
@@ -46,6 +69,13 @@ pub trait ConnectionTrait {
     /// This function can return an error if the connection task is not active anymore.
     /// This can happen if the Crazyflie is disconnected due to a timeout
     async fn recv_packet(&self) -> Result<Packet>;
+
+    /// Get radio link statistics
+    ///
+    /// Returns `Some(RadioLinkStatistics)` for radio connections with link quality,
+    /// uplink/downlink rates. Returns `None` for USB connections where these metrics
+    /// are not available.
+    async fn link_statistics(&self) -> Option<RadioLinkStatistics>;
 }
 
 /// Connection to a Crazyflie
@@ -103,5 +133,14 @@ impl Connection {
     /// This can happen if the Crazyflie is disconnected due to a timeout
     pub async fn recv_packet(&self) -> Result<Packet> {
         self.internal_connection.recv_packet().await
+    }
+
+    /// Get radio link statistics
+    ///
+    /// Returns `Some(RadioLinkStatistics)` for radio connections with link quality,
+    /// uplink/downlink rates. Returns `None` for USB connections where these metrics
+    /// are not available.
+    pub async fn link_statistics(&self) -> Option<RadioLinkStatistics> {
+        self.internal_connection.link_statistics().await
     }
 }

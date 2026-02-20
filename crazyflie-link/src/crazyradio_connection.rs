@@ -1,4 +1,4 @@
-use crate::connection::ConnectionTrait;
+use crate::connection::{ConnectionTrait, RadioLinkStatistics};
 // Connection handling code
 use crate::crazyradio::{Channel, SharedCrazyradio};
 use crate::error::{Error, Result};
@@ -17,6 +17,104 @@ use std::time;
 
 use std::time::Instant;
 
+/// Internal accumulator for radio link statistics
+#[derive(Debug)]
+struct StatsAccumulator {
+    sent_count: u64,
+    uplink_count: u64,
+    acked_count: u64,
+    received_count: u64,
+    total_retries: u64,
+    power_detector_count: u64,
+    rssi_sum: u64,
+    rssi_count: u64,
+    window_start: Instant,
+    /// Latest computed statistics snapshot
+    snapshot: RadioLinkStatistics,
+}
+
+impl StatsAccumulator {
+    fn new() -> Self {
+        Self {
+            sent_count: 0,
+            uplink_count: 0,
+            acked_count: 0,
+            received_count: 0,
+            total_retries: 0,
+            power_detector_count: 0,
+            rssi_sum: 0,
+            rssi_count: 0,
+            window_start: Instant::now(),
+            snapshot: RadioLinkStatistics::default(),
+        }
+    }
+
+    fn record_send(&mut self, is_data: bool) {
+        self.sent_count += 1;
+        if is_data {
+            self.uplink_count += 1;
+        }
+    }
+
+    fn record_ack(&mut self, retry: usize, power_detector: bool, rssi_dbm: Option<u8>) {
+        self.acked_count += 1;
+        self.total_retries += retry as u64;
+        if power_detector {
+            self.power_detector_count += 1;
+        }
+        if let Some(rssi) = rssi_dbm {
+            self.rssi_sum += rssi as u64;
+            self.rssi_count += 1;
+        }
+    }
+
+    fn record_received(&mut self) {
+        self.received_count += 1;
+    }
+
+    /// Update the snapshot if the measurement window (1 second) has elapsed.
+    fn maybe_update_snapshot(&mut self) {
+        let elapsed = self.window_start.elapsed();
+        if elapsed >= time::Duration::from_secs(1) {
+            let secs = elapsed.as_secs_f32();
+            self.snapshot = RadioLinkStatistics {
+                link_quality: if self.sent_count > 0 {
+                    self.acked_count as f32 / self.sent_count as f32
+                } else {
+                    1.0
+                },
+                uplink_rate: self.uplink_count as f32 / secs,
+                downlink_rate: self.received_count as f32 / secs,
+                radio_send_rate: self.sent_count as f32 / secs,
+                avg_retries: if self.acked_count > 0 {
+                    self.total_retries as f32 / self.acked_count as f32
+                } else {
+                    0.0
+                },
+                power_detector_rate: if self.acked_count > 0 {
+                    self.power_detector_count as f32 / self.acked_count as f32
+                } else {
+                    0.0
+                },
+                rssi: if self.rssi_count > 0 {
+                    Some(-(self.rssi_sum as f32 / self.rssi_count as f32))
+                } else {
+                    None
+                },
+            };
+            self.sent_count = 0;
+            self.uplink_count = 0;
+            self.acked_count = 0;
+            self.received_count = 0;
+            self.total_retries = 0;
+            self.power_detector_count = 0;
+            self.rssi_sum = 0;
+            self.rssi_count = 0;
+            self.window_start = Instant::now();
+        }
+    }
+}
+
 const EMPTY_PACKET_BEFORE_RELAX: u32 = 10;
 
 bitflags! {
@@ -33,6 +131,7 @@ pub struct CrazyradioConnection {
     downlink: flume::Receiver<Vec<u8>>,
     disconnect_channel: flume::Receiver<()>,
     disconnect: Arc<AtomicBool>,
+    stats: Arc<Mutex<StatsAccumulator>>,
 }
 
 impl CrazyradioConnection {
@@ -63,6 +162,7 @@ impl CrazyradioConnection {
         flags: ConnectionFlags,
     ) -> Result<CrazyradioConnection> {
         let status = Arc::new(Mutex::new(ConnectionStatus::Connecting));
+        let stats = Arc::new(Mutex::new(StatsAccumulator::new()));
 
         let (disconnect_channel_tx, disconnect_channel_rx) = flume::bounded(0);
         let disconnect = Arc::new(AtomicBool::new(false));
@@ -84,6 +184,7 @@ impl CrazyradioConnection {
             address,
             flags,
             disconnect: disconnect.clone(),
+            stats: stats.clone(),
         };
         tokio::spawn(async move {
             if let Err(e) = thread.run(connection_initialized_send).await {
@@ -106,6 +207,7 @@ impl CrazyradioConnection {
             uplink: uplink_send,
             downlink: downlink_recv,
             disconnect,
+            stats,
         })
     }
 
@@ -235,6 +337,10 @@ impl ConnectionTrait for CrazyradioConnection {
         let packet = self.downlink.recv_async().await?;
         Ok(packet.into())
     }
+
+    async fn link_statistics(&self) -> Option<RadioLinkStatistics> {
+        Some(self.stats.lock().await.snapshot.clone())
+    }
 }
 
 impl Drop for CrazyradioConnection {
@@ -255,6 +361,7 @@ struct ConnectionThread {
     address: [u8; 5],
     flags: ConnectionFlags,
     disconnect: Arc<AtomicBool>,
+    stats: Arc<Mutex<StatsAccumulator>>,
 }
 
 impl ConnectionThread {
@@ -382,27 +489,38 @@ impl ConnectionThread {
         let mut packet = vec![0xff];
         let mut needs_resend = false;
         while last_pk_time.elapsed() < time::Duration::from_millis(1000) {
+            let is_data;
             if !needs_resend {
-                packet = if self.uplink.is_empty() {
-                    vec![0xff]
+                if self.uplink.is_empty() {
+                    packet = vec![0xff];
+                    is_data = false;
                 } else {
-                    self.uplink.recv_async().await?
+                    packet = self.uplink.recv_async().await?;
+                    is_data = true;
                 }
+            } else {
+                is_data = false; // resends already counted
             }
 
             let (ack, mut ack_payload) = self.send_packet(packet.clone(), safelink).await?;
 
             debug!("Packet sent!");
 
+            {
+                let mut stats = self.stats.lock().await;
+                stats.record_send(is_data);
+                if ack.received {
+                    stats.record_ack(ack.retry, ack.power_detector, ack.rssi_dbm);
+                }
+            }
+
             if ack.received {
                 last_pk_time = Instant::now();
                 needs_resend = false;
 
-                // Add some relaxation time if the Crazyflie has nothing to send back
-                // for a while
-
                 let should_handle = self.preprocess_ack(&mut ack_payload, safelink);
                 if should_handle {
+                    self.stats.lock().await.record_received();
                     self.downlink.send(ack_payload)?;
                 } else if n_empty_packets > EMPTY_PACKET_BEFORE_RELAX {
                     // If no packet received for a while, relax packet pulling
@@ -413,6 +531,8 @@ impl ConnectionThread {
                 debug!("Lost packet!");
                 needs_resend = true;
             }
+
+            self.stats.lock().await.maybe_update_snapshot();
 
             // If the connection object has been dropped, leave the thread
             if self.disconnect.load(Relaxed) {
