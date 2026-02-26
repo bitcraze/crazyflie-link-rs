@@ -1,4 +1,4 @@
-name: Publish to crates.io
+name: Publish crazyflie-link to crates.io
 on:
   workflow_dispatch: 
 
@@ -32,6 +32,6 @@ jobs:
     # Publish to crates.io using OIDC for authentication
     - uses: rust-lang/crates-io-auth-action@v1
       id: auth
-    - run: cargo publish
+    - run: cd crazyflie-link && cargo publish
       env:
         CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
