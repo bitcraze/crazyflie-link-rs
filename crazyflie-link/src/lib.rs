@@ -29,6 +29,25 @@
 //! # Ok(())
 //! # }
 //! ```
+//! 
+//! ## Link URI format
+//! 
+//! The link URI format is as follows:
+//! 
+//! ``` text
+//! radio://<radio_nth>/<channel>/[datarate]/[address]?[options=value&options=value...]
+//! ```
+//! 
+//! - `radio_nth` is the index of the Crazyradio to use (0 for the first, 1 for the second, etc.)
+//! - `channel` is the radio channel to use (0-125)
+//! - `datarate` is the datarate to use (optional, default is 2M, possible values are 250K, 1M, 2M)
+//! - `address` is the radio address to use (optional, default is e7e7e7e7e7, 5 bytes in hex)
+//! - `options` are additional options:
+//!   - safelink: Disable safelink packet loss protection (optional, default is 1, 0 to disable)
+//!   - ackfilter: Enable ACK filtering, if disable, empty ack packet will be send as null packet downstream (optional, default is 0, 1 to enable)
+//!   - timeout: Set the receive timeout in milliseconds (optional, default is 1000)
+//! 
+//! **Note**: Crazyradio 2.0 only support channels 0-100, and datarates 1M and 2M.
 //!
 //! ## Cargo features
 //!

@@ -139,8 +139,10 @@ impl CrazyradioConnection {
         link_context: &LinkContext,
         uri: &str,
     ) -> Result<Option<CrazyradioConnection>> {
-        let (radio, channel, address, flags) = match Self::parse_uri(uri) {
-            Ok((radio, channel, address, flags)) => (radio, channel, address, flags),
+        let (radio, channel, address, flags, timeout) = match Self::parse_uri(uri) {
+            Ok((radio, channel, address, flags, timeout)) => {
+                (radio, channel, address, flags, timeout)
+            }
             Err(Error::InvalidUriScheme) => {
                 return Ok(None);
             }
@@ -150,7 +152,7 @@ impl CrazyradioConnection {
         };
 
         let radio = link_context.get_radio(radio).await?;
-        let connection = CrazyradioConnection::new(radio, channel, address, flags).await?;
+        let connection = CrazyradioConnection::new(radio, channel, address, flags, timeout).await?;
 
         Ok(Some(connection))
     }
@@ -160,6 +162,7 @@ impl CrazyradioConnection {
         channel: Channel,
         address: [u8; 5],
         flags: ConnectionFlags,
+        timeout: time::Duration,
     ) -> Result<CrazyradioConnection> {
         let status = Arc::new(Mutex::new(ConnectionStatus::Connecting));
         let stats = Arc::new(Mutex::new(StatsAccumulator::new()));
@@ -185,6 +188,7 @@ impl CrazyradioConnection {
             flags,
             disconnect: disconnect.clone(),
             stats: stats.clone(),
+            timeout,
         };
         tokio::spawn(async move {
             if let Err(e) = thread.run(connection_initialized_send).await {
@@ -242,7 +246,7 @@ impl CrazyradioConnection {
     ) -> Result<Vec<String>> {
         let mut found = Vec::new();
         for uri in uris {
-            let (radio_nth, channel, address, _) = Self::parse_uri(uri)?;
+            let (radio_nth, channel, address, _, _) = Self::parse_uri(uri)?;
             let mut radio = link_context.get_radio(radio_nth).await?;
             let (ack, _) = radio
                 .send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF])
@@ -254,7 +258,7 @@ impl CrazyradioConnection {
         Ok(found)
     }
 
-    fn parse_uri(uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags)> {
+    fn parse_uri(uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags, time::Duration)> {
         let uri = Url::parse(uri)?;
 
         if uri.scheme() != "radio" {
@@ -281,6 +285,7 @@ impl CrazyradioConnection {
         };
 
         let mut flags = ConnectionFlags::SAFELINK | ConnectionFlags::ACKFILTER;
+        let mut timeout = time::Duration::from_millis(1000);
         for (key, value) in uri.query_pairs() {
             match key.as_ref() {
                 "safelink" => {
@@ -293,11 +298,15 @@ impl CrazyradioConnection {
                         flags.remove(ConnectionFlags::ACKFILTER);
                     }
                 }
+                "timeout" => {
+                    let ms: u64 = value.parse().map_err(|_| Error::InvalidUri)?;
+                    timeout = time::Duration::from_millis(ms);
+                }
                 _ => continue,
             };
         }
 
-        Ok((radio, channel, address, flags))
+        Ok((radio, channel, address, flags, timeout))
     }
 }
 
@@ -362,6 +371,7 @@ struct ConnectionThread {
     flags: ConnectionFlags,
     disconnect: Arc<AtomicBool>,
     stats: Arc<Mutex<StatsAccumulator>>,
+    timeout: time::Duration,
 }
 
 impl ConnectionThread {
@@ -488,7 +498,7 @@ impl ConnectionThread {
         let mut n_empty_packets = 0;
         let mut packet = vec![0xff];
         let mut needs_resend = false;
-        while last_pk_time.elapsed() < time::Duration::from_millis(1000) {
+        while last_pk_time.elapsed() < self.timeout {
             let is_data;
             if !needs_resend {
                 if self.uplink.is_empty() {
