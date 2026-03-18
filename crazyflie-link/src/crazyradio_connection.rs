@@ -26,7 +26,7 @@ struct StatsAccumulator {
     received_count: u64,
     total_retries: u64,
     power_detector_count: u64,
-    rssi_sum: u64,
+    rssi_sum: i64,
     rssi_count: u64,
     window_start: Instant,
     /// Latest computed statistics snapshot
@@ -56,14 +56,14 @@ impl StatsAccumulator {
         }
     }
 
-    fn record_ack(&mut self, retry: usize, power_detector: bool, rssi_dbm: Option<u8>) {
+    fn record_ack(&mut self, retry: usize, power_detector: bool, rssi_dbm: Option<i16>) {
         self.acked_count += 1;
         self.total_retries += retry as u64;
         if power_detector {
             self.power_detector_count += 1;
         }
         if let Some(rssi) = rssi_dbm {
-            self.rssi_sum += rssi as u64;
+            self.rssi_sum += rssi as i64;
             self.rssi_count += 1;
         }
     }
@@ -97,7 +97,7 @@ impl StatsAccumulator {
                     0.0
                 },
                 rssi: if self.rssi_count > 0 {
-                    Some(-(self.rssi_sum as f32 / self.rssi_count as f32))
+                    Some(self.rssi_sum as f32 / self.rssi_count as f32)
                 } else {
                     None
                 },
