@@ -5,6 +5,7 @@
 
 use crate::connection::Connection;
 use crate::connection::ConnectionTrait;
+use crate::connection::PlatformAck;
 use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
 use crate::crazyradio::{SharedCrazyradio, WeakSharedCrazyradio};
 use crate::crazyradio_connection::CrazyradioConnection;
@@ -96,5 +97,64 @@ impl LinkContext {
         let internal_connection = connection.ok_or(Error::InvalidUri)?;
 
         Ok(Connection::new(internal_connection))
+    }
+
+    /// Send a platform command via the radio link
+    ///
+    /// This sends a one-shot command directly to the radio/platform chip (nRF)
+    /// on the Crazyflie without establishing a CRTP connection. The command is
+    /// sent as raw bytes and the acknowledgement response is returned.
+    ///
+    /// # Safety around active connections
+    ///
+    /// This function is safe to call while a CRTP connection is active,
+    /// because the API enforces that only null-port platform packets can be
+    /// sent. These packets are handled by the nRF radio chip itself and are
+    /// never forwarded to the STM32 application processor, so they cannot
+    /// interfere with the CRTP data stream.
+    ///
+    /// The following guardrails are enforced:
+    ///
+    /// - **Minimum length**: `data` must be at least 2 bytes. A single-byte
+    ///   null packet (`0xFF`) is a keepalive that would be forwarded to the
+    ///   STM32, so the second byte (command type) is required.
+    /// - **Null CRTP header**: `data[0] & 0xF3` must equal `0xF3`. The mask
+    ///   `0xF3` ignores bits 2–3 which carry safelink flow-control counters,
+    ///   so headers like `0xFF`, `0xF7`, `0xFB` are all accepted as valid
+    ///   null-port headers. Any packet with a non-null port or channel would
+    ///   be rejected.
+    ///
+    /// # Use cases
+    ///
+    /// Platform commands are useful for operations such as power management,
+    /// battery voltage queries, radio configuration, or querying platform
+    /// information.
+    ///
+    /// Only `radio://` URIs are supported. Other URI schemes will return
+    /// [`Error::NotSupported`]. Invalid packet data returns [`Error::InvalidData`].
+    pub async fn platform_command(&self, uri: &str, data: Vec<u8>) -> Result<PlatformAck> {
+        // Validate that the packet has a null CRTP header and a command type byte.
+        // A single-byte null packet (0xF3) is a keepalive that would be forwarded
+        // to the STM32, so we require at least 2 bytes.
+        if data.len() < 2 || data[0] & 0xF3 != 0xF3 {
+            return Err(Error::InvalidData);
+        }
+
+        let (radio_nth, channel, address, _, _) =
+            CrazyradioConnection::parse_uri(uri).map_err(|e| match e {
+                Error::InvalidUriScheme => Error::NotSupported,
+                other => other,
+            })?;
+
+        let mut radio = self.get_radio(radio_nth).await?;
+        let (ack, payload) = radio.send_packet_async(channel, address, data).await?;
+
+        Ok(PlatformAck {
+            received: ack.received,
+            data: payload,
+            rssi_dbm: ack.rssi_dbm,
+            power_detector: ack.power_detector,
+            retry: ack.retry,
+        })
     }
 }

@@ -258,7 +258,7 @@ impl CrazyradioConnection {
         Ok(found)
     }
 
-    fn parse_uri(uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags, time::Duration)> {
+    pub(crate) fn parse_uri(uri: &str) -> Result<(usize, Channel, [u8; 5], ConnectionFlags, time::Duration)> {
         let uri = Url::parse(uri)?;
 
         if uri.scheme() != "radio" {

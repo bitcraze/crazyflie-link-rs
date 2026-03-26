@@ -92,7 +92,7 @@ pub mod capture;
 
 pub(crate) use crazyradio;
 
-pub use connection::{Connection, ConnectionStatus, ConnectionTrait, RadioLinkStatistics};
+pub use connection::{Connection, ConnectionStatus, ConnectionTrait, PlatformAck, RadioLinkStatistics};
 pub use context::LinkContext;
 pub use error::Error;
 pub use packet::Packet;

@@ -4,11 +4,16 @@ use std::num::ParseIntError;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
     #[error("Invalid URI scheme")]
     InvalidUriScheme,
     #[error("Invalid URI")]
     InvalidUri,
+    #[error("Operation not supported for this URI scheme")]
+    NotSupported,
+    #[error("Invalid packet data")]
+    InvalidData,
     #[error("Timeout")]
     Timeout,
     #[error("Crazyradio error: {0:?}")]
