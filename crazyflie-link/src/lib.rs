@@ -84,7 +84,7 @@ mod connection;
 mod context;
 mod crazyflie_usb_connection;
 mod crazyradio_connection;
-mod error;
+pub mod error;
 mod packet;
 
 #[cfg(feature = "packet_capture")]
@@ -92,7 +92,7 @@ pub mod capture;
 
 pub(crate) use crazyradio;
 
-pub use connection::{Connection, ConnectionStatus, RadioLinkStatistics};
+pub use connection::{Connection, ConnectionStatus, ConnectionTrait, RadioLinkStatistics};
 pub use context::LinkContext;
 pub use error::Error;
 pub use packet::Packet;
