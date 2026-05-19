@@ -123,72 +123,134 @@ impl CrazyflieUSBConnection {
             #[cfg(feature = "packet_capture")]
             let capture_serial = capture_serial;
 
-            let thread_handle = std::thread::spawn::<_, Result<_>>(move || {
-                info!("Communication thread started");
+            let usb_handle = Arc::new(usb_handle);
+            let usb_handle_r = usb_handle.clone();
+            let usb_handle_w = usb_handle;
+            let conn_disconnect_r = conn_disconnect.clone();
+            let conn_disconnect_w = conn_disconnect.clone();
+
+            #[cfg(feature = "packet_capture")]
+            let capture_serial_r = capture_serial.clone();
+            #[cfg(feature = "packet_capture")]
+            let capture_serial_w = capture_serial;
+
+            // When either thread exits (Ok, Err, or panic), flip the shared
+            // disconnect flag so the sibling stops on its next iteration and
+            // the outer join() can't hang.
+            struct DisconnectGuard(Arc<AtomicBool>);
+            impl Drop for DisconnectGuard {
+                fn drop(&mut self) {
+                    self.0.store(true, Relaxed);
+                }
+            }
+
+            let reader = std::thread::spawn::<_, Result<()>>(move || {
+                info!("Reader thread started");
+                let _guard = DisconnectGuard(conn_disconnect_r.clone());
                 loop {
+                    if conn_disconnect_r.load(Relaxed) {
+                        return Ok(());
+                    }
                     let mut buf = vec![0; 64];
-                    match usb_handle.read_bulk(0x81, &mut buf, Duration::from_millis(20)) {
+                    match usb_handle_r.read_bulk(0x81, &mut buf, Duration::from_millis(20)) {
                         Ok(n) => {
                             if n > 0 {
                                 let packet = buf[0..n].to_vec();
-                                // Capture RX packet
                                 #[cfg(feature = "packet_capture")]
                                 crate::capture::send_packet(
                                     crate::capture::LINK_TYPE_USB,
                                     crate::capture::DIRECTION_RX,
-                                    &[],  // No address for USB
-                                    0,    // No channel for USB
-                                    &capture_serial,
+                                    &[],
+                                    0,
+                                    &capture_serial_r,
                                     &packet,
                                 );
-                                downlink_send.send(packet)?;
+                                if downlink_send.send(packet).is_err() {
+                                    return Ok(());
+                                }
                             }
                         }
                         Err(rusb::Error::Timeout) => {}
                         Err(e) => {
-                            warn!("Downlink thread error: {:?}", e);
+                            warn!("Reader thread error: {:?}", e);
                             return Err(e.into());
                         }
-                    }
-
-                    while !uplink_recv.is_empty() {
-                        let packet = uplink_recv.recv()?;
-                        // Capture TX packet
-                        #[cfg(feature = "packet_capture")]
-                        crate::capture::send_packet(
-                            crate::capture::LINK_TYPE_USB,
-                            crate::capture::DIRECTION_TX,
-                            &[],  // No address for USB
-                            0,    // No channel for USB
-                            &capture_serial,
-                            &packet,
-                        );
-                        match usb_handle.write_bulk(0x01, &packet, Duration::from_millis(100)) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                warn!("Uplink thread error: {:?}", e);
-                                return Err(e.into());
-                            }
-                        }
-                    }
-
-                    // If the connection object has been dropped, leave the thread
-                    if conn_disconnect.load(Relaxed) {
-                        debug!("Disconnect requested, leaving connection loop.");
-                        return Ok(());
                     }
                 }
             });
 
-            let disconnect_message = match thread_handle.join() {
-                Ok(Ok(())) => format!("Connection closed"),
-                Ok(Err(e)) => {
-                    error!("Connection thread error: {:?}", e);
-                    format!("USB error: {:?}", e)
+            let writer = std::thread::spawn::<_, Result<()>>(move || {
+                info!("Writer thread started");
+                let _guard = DisconnectGuard(conn_disconnect_w.clone());
+                loop {
+                    // Check disconnect at the top of every iteration so a
+                    // continuous uplink stream cannot starve the shutdown check.
+                    if conn_disconnect_w.load(Relaxed) {
+                        return Ok(());
+                    }
+                    let packet = match uplink_recv.recv_timeout(Duration::from_millis(20)) {
+                        Ok(p) => p,
+                        Err(flume::RecvTimeoutError::Timeout) => continue,
+                        Err(flume::RecvTimeoutError::Disconnected) => return Ok(()),
+                    };
+                    #[cfg(feature = "packet_capture")]
+                    crate::capture::send_packet(
+                        crate::capture::LINK_TYPE_USB,
+                        crate::capture::DIRECTION_TX,
+                        &[],
+                        0,
+                        &capture_serial_w,
+                        &packet,
+                    );
+                    // Retry on Timeout — transient NAK is not fatal.
+                    loop {
+                        match usb_handle_w.write_bulk(0x01, &packet, Duration::from_millis(500)) {
+                            Ok(_) => break,
+                            Err(rusb::Error::Timeout) => {
+                                if conn_disconnect_w.load(Relaxed) {
+                                    return Ok(());
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Writer thread error: {:?}", e);
+                                return Err(e.into());
+                            }
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!("Connection thread panicked: {:?}", e);
-                    format!("Connection thread panicked: {:?}", e)
+            });
+
+            fn panic_payload(payload: Box<dyn std::any::Any + Send>) -> String {
+                if let Some(s) = payload.downcast_ref::<&'static str>() {
+                    (*s).to_string()
+                } else if let Some(s) = payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic payload".to_string()
+                }
+            }
+
+            let reader_result = reader.join();
+            let writer_result = writer.join();
+            let disconnect_message = match (reader_result, writer_result) {
+                (Ok(Ok(())), Ok(Ok(()))) => "Connection closed".to_string(),
+                (Ok(Err(e)), _) => {
+                    error!("Reader thread error: {:?}", e);
+                    format!("USB error (reader): {:?}", e)
+                }
+                (_, Ok(Err(e))) => {
+                    error!("Writer thread error: {:?}", e);
+                    format!("USB error (writer): {:?}", e)
+                }
+                (Err(p), _) => {
+                    let msg = panic_payload(p);
+                    error!("Reader thread panicked: {}", msg);
+                    format!("Reader thread panicked: {}", msg)
+                }
+                (_, Err(p)) => {
+                    let msg = panic_payload(p);
+                    error!("Writer thread panicked: {}", msg);
+                    format!("Writer thread panicked: {}", msg)
                 }
             };
 
