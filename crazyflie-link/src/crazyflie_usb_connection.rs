@@ -220,15 +220,38 @@ impl CrazyflieUSBConnection {
                 }
             });
 
+            fn panic_payload(payload: Box<dyn std::any::Any + Send>) -> String {
+                if let Some(s) = payload.downcast_ref::<&'static str>() {
+                    (*s).to_string()
+                } else if let Some(s) = payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic payload".to_string()
+                }
+            }
+
             let reader_result = reader.join();
             let writer_result = writer.join();
             let disconnect_message = match (reader_result, writer_result) {
                 (Ok(Ok(())), Ok(Ok(()))) => "Connection closed".to_string(),
-                (Ok(Err(e)), _) | (_, Ok(Err(e))) => {
-                    error!("Connection thread error: {:?}", e);
-                    format!("USB error: {:?}", e)
+                (Ok(Err(e)), _) => {
+                    error!("Reader thread error: {:?}", e);
+                    format!("USB error (reader): {:?}", e)
                 }
-                (Err(_), _) | (_, Err(_)) => "Connection thread panicked".to_string(),
+                (_, Ok(Err(e))) => {
+                    error!("Writer thread error: {:?}", e);
+                    format!("USB error (writer): {:?}", e)
+                }
+                (Err(p), _) => {
+                    let msg = panic_payload(p);
+                    error!("Reader thread panicked: {}", msg);
+                    format!("Reader thread panicked: {}", msg)
+                }
+                (_, Err(p)) => {
+                    let msg = panic_payload(p);
+                    error!("Writer thread panicked: {}", msg);
+                    format!("Writer thread panicked: {}", msg)
+                }
             };
 
             let inner_status = conn_status.clone();
