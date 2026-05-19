@@ -134,8 +134,19 @@ impl CrazyflieUSBConnection {
             #[cfg(feature = "packet_capture")]
             let capture_serial_w = capture_serial;
 
+            // When either thread exits (Ok, Err, or panic), flip the shared
+            // disconnect flag so the sibling stops on its next iteration and
+            // the outer join() can't hang.
+            struct DisconnectGuard(Arc<AtomicBool>);
+            impl Drop for DisconnectGuard {
+                fn drop(&mut self) {
+                    self.0.store(true, Relaxed);
+                }
+            }
+
             let reader = std::thread::spawn::<_, Result<()>>(move || {
                 info!("Reader thread started");
+                let _guard = DisconnectGuard(conn_disconnect_r.clone());
                 loop {
                     if conn_disconnect_r.load(Relaxed) {
                         return Ok(());
@@ -170,15 +181,16 @@ impl CrazyflieUSBConnection {
 
             let writer = std::thread::spawn::<_, Result<()>>(move || {
                 info!("Writer thread started");
+                let _guard = DisconnectGuard(conn_disconnect_w.clone());
                 loop {
+                    // Check disconnect at the top of every iteration so a
+                    // continuous uplink stream cannot starve the shutdown check.
+                    if conn_disconnect_w.load(Relaxed) {
+                        return Ok(());
+                    }
                     let packet = match uplink_recv.recv_timeout(Duration::from_millis(20)) {
                         Ok(p) => p,
-                        Err(flume::RecvTimeoutError::Timeout) => {
-                            if conn_disconnect_w.load(Relaxed) {
-                                return Ok(());
-                            }
-                            continue;
-                        }
+                        Err(flume::RecvTimeoutError::Timeout) => continue,
                         Err(flume::RecvTimeoutError::Disconnected) => return Ok(()),
                     };
                     #[cfg(feature = "packet_capture")]
