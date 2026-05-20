@@ -36,6 +36,24 @@ pub struct RadioLinkStatistics {
     pub rssi: Option<f32>,
 }
 
+/// Response from a platform command
+///
+/// Contains the acknowledgement status and payload from a one-shot
+/// command sent to the radio/platform chip (nRF) on the Crazyflie.
+#[derive(Clone, Debug)]
+pub struct PlatformAck {
+    /// Whether the radio received an acknowledgement
+    pub received: bool,
+    /// The response payload data
+    pub data: Vec<u8>,
+    /// RSSI in dBm, if supported by the radio dongle
+    pub rssi_dbm: Option<i16>,
+    /// Whether the nRF24 power detector triggered
+    pub power_detector: bool,
+    /// Number of retries before the packet was acknowledged
+    pub retry: usize,
+}
+
 // Describes the interface for a connection to a Crazyflie
 #[async_trait]
 pub trait ConnectionTrait {
