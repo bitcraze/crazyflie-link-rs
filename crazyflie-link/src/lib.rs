@@ -90,7 +90,7 @@ mod packet;
 #[cfg(feature = "packet_capture")]
 pub mod capture;
 
-pub(crate) use crazyradio;
+pub use crazyradio;
 
 pub use connection::{Connection, ConnectionStatus, ConnectionTrait, PlatformAck, RadioLinkStatistics};
 pub use context::LinkContext;
