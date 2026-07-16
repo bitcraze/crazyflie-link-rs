@@ -55,8 +55,9 @@
 //! [`SharedCrazyradio`]), which makes crazyradio a *public dependency*: code using this
 //! crate may need to name crazyradio types. To avoid a separate, possibly
 //! version-mismatched crazyradio dependency downstream, the crate is re-exported at
-//! [`crazyradio`] — use it through this path instead of adding a direct dependency. This is a supported part of the API: the re-exported crazyradio only moves
-//! to a semver-incompatible version in a semver-incompatible release of this crate.
+//! [`crazyradio`] — use it through this path instead of adding a direct dependency. This
+//! is a supported part of the API: the re-exported crazyradio only moves to a
+//! semver-incompatible version in a semver-incompatible release of this crate.
 //!
 //! ## Cargo features
 //!
