@@ -103,9 +103,11 @@ pub mod capture;
 /// Re-export of the exact [`crazyradio`] crate version this crate was built against.
 ///
 /// crazyradio is a public dependency of this crate (its types appear in our API, e.g.
-/// [`SharedCrazyradio`]). Use this re-export instead of a direct crazyradio dependency to
-/// guarantee a single, version-matched copy in your build. Supported API: the re-exported
-/// crazyradio only changes incompatibly in a semver-incompatible release of this crate.
+/// [`SharedCrazyradio`]). Use this re-export instead of a direct crazyradio dependency
+/// to guarantee a single, version-matched copy in your build.
+///
+/// Supported API: the re-exported crazyradio only changes incompatibly in a
+/// semver-incompatible release of this crate.
 pub use crazyradio;
 
 pub use connection::{Connection, ConnectionStatus, ConnectionTrait, PlatformAck, RadioLinkStatistics};
