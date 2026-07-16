@@ -49,6 +49,16 @@
 //! 
 //! **Note**: Crazyradio 2.0 only support channels 0-100, and datarates 1M and 2M.
 //!
+//! ## Relation to the crazyradio crate
+//!
+//! Types from the [`crazyradio`] crate appear in this crate's public API (for example
+//! [`SharedCrazyradio`]), which makes crazyradio a *public dependency*: code using this
+//! crate may need to name crazyradio types. To avoid a separate, possibly
+//! version-mismatched crazyradio dependency downstream, the crate is re-exported at
+//! [`crazyradio`] — use it through this path instead of adding a direct dependency. This
+//! is a supported part of the API: the re-exported crazyradio only moves to a
+//! semver-incompatible version in a semver-incompatible release of this crate.
+//!
 //! ## Cargo features
 //!
 //! - **packet_capture** - Enable packet capture via Unix socket (Unix only)
@@ -90,7 +100,15 @@ mod packet;
 #[cfg(feature = "packet_capture")]
 pub mod capture;
 
-pub(crate) use crazyradio;
+/// Re-export of the exact [`crazyradio`] crate version this crate was built against.
+///
+/// crazyradio is a public dependency of this crate (its types appear in our API, e.g.
+/// [`SharedCrazyradio`]). Use this re-export instead of a direct crazyradio dependency
+/// to guarantee a single, version-matched copy in your build.
+///
+/// Supported API: the re-exported crazyradio only changes incompatibly in a
+/// semver-incompatible release of this crate.
+pub use crazyradio;
 
 pub use connection::{Connection, ConnectionStatus, ConnectionTrait, PlatformAck, RadioLinkStatistics};
 pub use context::LinkContext;
