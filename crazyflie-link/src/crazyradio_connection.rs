@@ -246,7 +246,11 @@ impl CrazyradioConnection {
     ) -> Result<Vec<String>> {
         let mut found = Vec::new();
         for uri in uris {
-            let (radio_nth, channel, address, _, _) = Self::parse_uri(uri)?;
+            let (radio_nth, channel, address, _, _) = match Self::parse_uri(uri) {
+                Ok(parsed) => parsed,
+                Err(Error::InvalidUriScheme) => continue,
+                Err(e) => return Err(e),
+            };
             let mut radio = link_context.get_radio(radio_nth).await?;
             let (ack, _) = radio
                 .send_packet_async(channel, address, vec![0xFF, 0xFF, 0xFF])
