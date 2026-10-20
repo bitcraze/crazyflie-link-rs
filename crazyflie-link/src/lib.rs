@@ -49,6 +49,22 @@
 //! 
 //! **Note**: Crazyradio 2.0 only support channels 0-100, and datarates 1M and 2M.
 //!
+//! A Crazyflie connected over USB is opened with `usb://<serial>`.
+//!
+//! The Crazyflie firmware simulator (Simmyflie) is opened over UDP:
+//!
+//! ``` text
+//! udp://<host>:<port>?[timeout=value]
+//! ```
+//!
+//! - `host` and `port` are the address and UDP port of the simulator
+//! - `timeout`: Set the receive timeout in milliseconds (optional, default is 1000)
+//!
+//! Each UDP datagram carries one CRTP packet. Opening the link fails if the simulator does
+//! not answer, and the link is disconnected when it stops answering for `timeout`. Other
+//! options, like `safelink`, are ignored. Scanning finds the simulators running on the
+//! same host by listening for their beacons.
+//!
 //! ## Relation to the crazyradio crate
 //!
 //! Types from the [`crazyradio`] crate appear in this crate's public API (for example
@@ -78,11 +94,11 @@
 //!
 //! | Offset | Size | Field       | Description                              |
 //! |--------|------|-------------|------------------------------------------|
-//! | 0      | 1    | link_type   | 1 = Radio, 2 = USB                       |
+//! | 0      | 1    | link_type   | 1 = Radio, 2 = USB, 3 = UDP              |
 //! | 1      | 1    | direction   | 0 = TX (to Crazyflie), 1 = RX (from CF)  |
 //! | 2      | 12   | address     | Radio address (5 bytes) or empty for USB |
 //! | 14     | 1    | channel     | Radio channel (0 for USB)                |
-//! | 15     | 16   | serial      | Radio/device serial number               |
+//! | 15     | 16   | serial      | Radio/device serial number, UDP peer     |
 //! | 31     | 8    | timestamp   | Microseconds since Unix epoch (LE)       |
 //! | 39     | 2    | length      | CRTP packet length (LE)                  |
 //! | 41     | N    | data        | CRTP packet (header + payload)           |
@@ -96,6 +112,7 @@ mod crazyflie_usb_connection;
 mod crazyradio_connection;
 pub mod error;
 mod packet;
+mod udp_connection;
 
 #[cfg(feature = "packet_capture")]
 pub mod capture;
