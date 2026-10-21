@@ -43,9 +43,12 @@
 //! - `datarate` is the datarate to use (optional, default is 2M, possible values are 250K, 1M, 2M)
 //! - `address` is the radio address to use (optional, default is e7e7e7e7e7, 5 bytes in hex)
 //! - `options` are additional options:
-//!   - safelink: Disable safelink packet loss protection (optional, default is 1, 0 to disable)
+//!   - safelink: Disable safelink packet loss protection (optional, default is 1, 0 to disable).
+//!     With safelink, opening the link fails unless the Crazyflie echoes the safelink handshake
+//!     within the timeout. Bootloaders do not support safelink, use 0 for them.
 //!   - ackfilter: Enable ACK filtering, if disable, empty ack packet will be send as null packet downstream (optional, default is 0, 1 to enable)
-//!   - timeout: Set the receive timeout in milliseconds (optional, default is 1000)
+//!   - timeout: Set the receive timeout in milliseconds, also how long opening the link waits
+//!     for the safelink handshake (optional, default is 1000)
 //! 
 //! **Note**: Crazyradio 2.0 only support channels 0-100, and datarates 1M and 2M.
 //!
