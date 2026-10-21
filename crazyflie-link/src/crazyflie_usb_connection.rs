@@ -92,7 +92,8 @@ impl CrazyflieUSBConnection {
         let (uplink_send, uplink_recv) = flume::unbounded::<Vec<u8>>();
         let (downlink_send, downlink_recv) = flume::unbounded::<Vec<u8>>();
 
-        let (connection_initialized_send, connection_initialized) = oneshot::channel();
+        let (connection_initialized_send, connection_initialized) =
+            oneshot::channel::<Result<()>>();
 
         let conn_disconnect = disconnect.clone();
         let conn_status = status.clone();
@@ -108,6 +109,7 @@ impl CrazyflieUSBConnection {
                 Ok(_) => debug!("Switched to USB communication mode"),
                 Err(e) => {
                     error!("Error switching to USB communication mode: {:?}", e);
+                    let _ = connection_initialized_send.send(Err(e.into()));
                     return;
                 }
             }
@@ -118,7 +120,11 @@ impl CrazyflieUSBConnection {
                 *status = ConnectionStatus::Connected;
             });
 
-            connection_initialized_send.send(()).unwrap();
+            // If open() is no longer waiting, nobody will use this connection: let the
+            // threads below stop at once and switch the Crazyflie back to Crazyradio mode
+            if connection_initialized_send.send(Ok(())).is_err() {
+                conn_disconnect.store(true, Relaxed);
+            }
 
             #[cfg(feature = "packet_capture")]
             let capture_serial = capture_serial;
@@ -273,7 +279,9 @@ impl CrazyflieUSBConnection {
         });
 
         // Wait for, either, the connection being established or failed initialization
-        connection_initialized.await.unwrap();
+        connection_initialized
+            .await
+            .map_err(|_| Error::ConnectionAborted)??;
 
         Ok(CrazyflieUSBConnection {
             status,

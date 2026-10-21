@@ -191,7 +191,26 @@ impl CrazyradioConnection {
             timeout,
         };
         tokio::spawn(async move {
-            if let Err(e) = thread.run(connection_initialized_send).await {
+            let safelink = match thread.connect().await {
+                Ok(safelink) => safelink,
+                Err(e) => {
+                    thread
+                        .update_status(ConnectionStatus::Disconnected(format!(
+                            "Connection error: {}",
+                            e
+                        )))
+                        .await;
+                    let _ = connection_initialized_send.send(Err(e));
+                    return;
+                }
+            };
+
+            // If open() is no longer waiting, nobody will use this connection
+            if connection_initialized_send.send(Ok(())).is_err() {
+                return;
+            }
+
+            if let Err(e) = thread.run(safelink).await {
                 thread
                     .update_status(ConnectionStatus::Disconnected(format!(
                         "Connection error: {}",
@@ -203,7 +222,9 @@ impl CrazyradioConnection {
         });
 
         // Wait for, either, the connection being established or failed initialization
-        connection_initialized.await.unwrap();
+        connection_initialized
+            .await
+            .map_err(|_| Error::ConnectionAborted)??;
 
         Ok(CrazyradioConnection {
             status,
@@ -484,15 +505,18 @@ impl ConnectionThread {
         false
     }
 
-    async fn run(&mut self, connection_initialized: oneshot::Sender<()>) -> Result<()> {
+    /// Set up the link, returns whether safelink is in use
+    async fn connect(&mut self) -> Result<bool> {
         info!("Connecting to {:?}/{:X?} ...", self.channel, self.address);
 
         // Try to initialize safelink if in use
         let safelink = self.use_safelink() && self.enable_safelink().await?;
 
         self.update_status(ConnectionStatus::Connected).await;
-        connection_initialized.send(()).unwrap();
+        Ok(safelink)
+    }
 
+    async fn run(&mut self, safelink: bool) -> Result<()> {
         // Communication loop ...
         let mut last_pk_time = Instant::now();
         let mut n_empty_packets = 0;

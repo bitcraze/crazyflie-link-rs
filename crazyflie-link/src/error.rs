@@ -24,6 +24,8 @@ pub enum Error {
     ChannelSendError(flume::SendError<Vec<u8>>),
     #[error("USB error: {0:?}")]
     USBSubsystemError(rusb::Error),
+    #[error("The connection ended before it was set up")]
+    ConnectionAborted,
 }
 
 impl From<crate::crazyradio::Error> for Error {
