@@ -26,6 +26,10 @@ pub enum Error {
     USBSubsystemError(rusb::Error),
     #[error("The connection ended before it was set up")]
     ConnectionAborted,
+    #[error("No answer from the Crazyflie")]
+    NoAnswer,
+    #[error("The Crazyflie answers but does not echo the safelink handshake (bootloader or radio firmware without safelink, connect with safelink=0)")]
+    SafelinkNotSupported,
 }
 
 impl From<crate::crazyradio::Error> for Error {

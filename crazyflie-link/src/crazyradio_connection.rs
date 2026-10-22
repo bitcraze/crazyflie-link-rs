@@ -402,9 +402,13 @@ impl ConnectionThread {
         *status = new_status;
     }
 
-    async fn enable_safelink(&mut self) -> Result<bool> {
-        // Tying 10 times to reset safelink
-        for _ in 0..10 {
+    // Send the safelink handshake until the Crazyflie echoes it or the link timeout runs
+    // out. A Crazyflie keeps its radio off for a few seconds after it boots, until the
+    // STM32 has started, so a link opened then gets no answer at first.
+    async fn enable_safelink(&mut self) -> Result<()> {
+        let start = Instant::now();
+        let mut answered = false;
+        loop {
             let (ack, payload) = self
                 .radio
                 .send_packet_async(self.channel, self.address, vec![0xff, 0x05, 0x01])
@@ -415,10 +419,18 @@ impl ConnectionThread {
                 self.safelink_up_ctr = 0;
 
                 // Safelink enabled!
-                return Ok(true);
+                return Ok(());
+            }
+            answered |= ack.received;
+
+            if start.elapsed() >= self.timeout {
+                return Err(if answered {
+                    Error::SafelinkNotSupported
+                } else {
+                    Error::NoAnswer
+                });
             }
         }
-        Ok(false)
     }
 
     async fn send_packet_safe(
@@ -509,8 +521,11 @@ impl ConnectionThread {
     async fn connect(&mut self) -> Result<bool> {
         info!("Connecting to {:?}/{:X?} ...", self.channel, self.address);
 
-        // Try to initialize safelink if in use
-        let safelink = self.use_safelink() && self.enable_safelink().await?;
+        // Initialize safelink if in use, the link is unprotected without it
+        let safelink = self.use_safelink();
+        if safelink {
+            self.enable_safelink().await?;
+        }
 
         self.update_status(ConnectionStatus::Connected).await;
         Ok(safelink)
