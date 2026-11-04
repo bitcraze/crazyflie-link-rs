@@ -23,3 +23,8 @@ $ python
 ['radio://0/60/2M/E7E7E7E7E7']
 >>>
 ```
+
+## Contribute
+Before you open a pull request, please read our [General guidelines for code contributions](https://www.bitcraze.io/development/contribute/general-guidelines/).
+
+For other ways to contribute, see the [contribute page](https://www.bitcraze.io/development/contribute/).
