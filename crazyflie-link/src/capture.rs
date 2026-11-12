@@ -22,6 +22,8 @@ const SOCKET_PATH: &str = "/tmp/crazyflie-capture.sock";
 pub const LINK_TYPE_RADIO: u8 = 1;
 /// Link type for USB connections
 pub const LINK_TYPE_USB: u8 = 2;
+/// Link type for UDP connections (firmware simulator)
+pub const LINK_TYPE_UDP: u8 = 3;
 
 /// Direction: transmit (to Crazyflie)
 pub const DIRECTION_TX: u8 = 0;
@@ -66,11 +68,11 @@ pub fn is_available() -> bool {
 /// Send a captured packet to Wireshark
 ///
 /// # Arguments
-/// * `link_type` - LINK_TYPE_RADIO or LINK_TYPE_USB
+/// * `link_type` - LINK_TYPE_RADIO, LINK_TYPE_USB or LINK_TYPE_UDP
 /// * `direction` - DIRECTION_TX or DIRECTION_RX
 /// * `address` - Device address (5 bytes for radio, up to 12 for USB)
 /// * `channel` - Radio channel (0 for USB)
-/// * `serial` - Device/radio serial number (up to 16 bytes)
+/// * `serial` - Device/radio serial number, or UDP peer address (up to 16 bytes)
 /// * `data` - CRTP packet data (header + payload)
 pub fn send_packet(
     link_type: u8,

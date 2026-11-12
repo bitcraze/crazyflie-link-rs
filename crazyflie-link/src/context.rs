@@ -9,6 +9,7 @@ use crate::connection::PlatformAck;
 use crate::crazyflie_usb_connection::CrazyflieUSBConnection;
 use crate::crazyradio::{SharedCrazyradio, WeakSharedCrazyradio};
 use crate::crazyradio_connection::CrazyradioConnection;
+use crate::udp_connection::UdpConnection;
 use crate::error::{Error, Result};
 use futures_util::lock::Mutex;
 
@@ -54,15 +55,24 @@ impl LinkContext {
     /// Scan for Crazyflies at some given address
     ///
     /// This function will send a packet to every channels and look for an acknowledgement in return.
+    /// It also lists the Crazyflies connected over USB, and listens for the beacons of the
+    /// firmware simulators (Simmyflies) running on this host.
     ///
     /// The address argument will set the radio packets address to scan for.
     ///
     /// It returns a list of URIs that can be passed to the [LinkContext::open_link()] function.
     pub async fn scan(&self, address: [u8; 5]) -> Result<Vec<String>> {
-        let mut found = Vec::new();
+        // Listen for simulator beacons while scanning the radio and USB
+        let local = async {
+            let mut found = Vec::new();
+            found.extend(CrazyradioConnection::scan(self, address).await?);
+            found.extend(CrazyflieUSBConnection::scan().await?);
+            Result::<_>::Ok(found)
+        };
+        let (found, found_udp) = futures::join!(local, UdpConnection::scan());
 
-        found.extend(CrazyradioConnection::scan(self, address).await?);
-        found.extend(CrazyflieUSBConnection::scan().await?);
+        let mut found = found?;
+        found.extend(found_udp?);
 
         Ok(found)
     }
@@ -76,6 +86,7 @@ impl LinkContext {
         let mut found = Vec::new();
 
         found.extend(CrazyradioConnection::scan_selected(self, uris.clone()).await?);
+        found.extend(UdpConnection::scan_selected(uris.clone()).await?);
         found.extend(CrazyflieUSBConnection::scan_selected(uris).await?);
 
         Ok(found)
@@ -87,6 +98,8 @@ impl LinkContext {
     pub async fn open_link(&self, uri: &str) -> Result<Connection> {
         let connection: Option<Box<dyn ConnectionTrait + Send + Sync>> =
             if let Some(connection) = CrazyradioConnection::open(self, uri).await? {
+                Some(Box::new(connection))
+            } else if let Some(connection) = UdpConnection::open(self, uri).await? {
                 Some(Box::new(connection))
             } else if let Some(connection) = CrazyflieUSBConnection::open(self, uri).await? {
                 Some(Box::new(connection))

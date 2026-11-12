@@ -24,6 +24,8 @@ pub enum Error {
     ChannelSendError(flume::SendError<Vec<u8>>),
     #[error("USB error: {0:?}")]
     USBSubsystemError(rusb::Error),
+    #[error("IO error: {0}")]
+    IoError(std::io::Error),
 }
 
 impl From<crate::crazyradio::Error> for Error {
@@ -59,6 +61,12 @@ impl From<ParseIntError> for Error {
 impl From<RecvTimeoutError> for Error {
     fn from(_error: RecvTimeoutError) -> Self {
         Error::Timeout
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Error::IoError(error)
     }
 }
 

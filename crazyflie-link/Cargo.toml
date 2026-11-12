@@ -29,6 +29,7 @@ futures-util = "0.3"
 futures-channel = "0.3"
 rusb = "0.9.4"
 async-trait = "0.1.83"
+socket2 = "0.6"
 
 [features]
 default = []
